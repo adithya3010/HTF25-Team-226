@@ -1,4 +1,6 @@
-require('dotenv').config();
+// Load environment variables from the Backend/.env file so this script works
+// whether started from project root or Backend folder.
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const express = require('express');
 const http = require('http');
 const path = require('path');
@@ -29,6 +31,14 @@ if (useMongo) {
     })
         .then(() => console.log('✅ MongoDB connected'))
         .catch((err) => console.error('❌ MongoDB error:', err));
+}
+
+if (useMongo) {
+    mongoose.connection.on('connected', () => console.log('MongoDB connection state: connected'));
+    mongoose.connection.on('error', (err) => console.error('MongoDB connection error:', err));
+    mongoose.connection.on('disconnected', () => console.warn('MongoDB disconnected'));
+} else {
+    console.log('MongoDB not configured (MONGODB_URI missing) — running with in-memory message store');
 }
 
 // Serve public folder for simple client if present

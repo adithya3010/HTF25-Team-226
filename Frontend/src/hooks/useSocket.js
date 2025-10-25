@@ -12,7 +12,7 @@ export function useSocket(username) {
   useEffect(() => {
     if (!username) return;
 
-    const newSocket = io('http://localhost:3001', {
+    const newSocket = io('http://localhost:5000', {
       query: { username },
     });
 
@@ -30,8 +30,19 @@ export function useSocket(username) {
     });
 
     // Message events
+    newSocket.on('message history', (history) => {
+      // Replace entire message list with history from server (DB or memory)
+      if (Array.isArray(history)) {
+        setMessages(history);
+      }
+    });
+
     newSocket.on('message', (message) => {
-      setMessages((prev) => [...prev, message]);
+      setMessages((prev) => {
+        // avoid duplicates
+        if (prev.find((m) => m.id === message.id)) return prev;
+        return [...prev, message];
+      });
     });
 
     newSocket.on('messageDeleted', (messageId) => {
