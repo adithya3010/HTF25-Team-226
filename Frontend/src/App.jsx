@@ -1,18 +1,21 @@
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { UsernamePrompt } from './components/UsernamePrompt';
-import { ChatWindow } from './components/ChatWindow';
-import { MessageInput } from './components/MessageInput';
-import { UserSidebar } from './components/UserSidebar';
-import { useSocket } from './hooks/useSocket';
-import io from 'socket.io-client';
-import { Button } from './components/ui/button';
-import { Sheet, SheetContent, SheetTrigger } from './components/ui/sheet';
-import { Toaster } from './components/ui/sonner';
-import { RoomList } from './components/RoomList';
-import { MessageCircle, Moon, Sun, Users, Wifi, WifiOff } from 'lucide-react';
+import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import { UsernamePrompt } from "./components/UsernamePrompt";
+import { ChatWindow } from "./components/ChatWindow";
+import { MessageInput } from "./components/MessageInput";
+import { UserSidebar } from "./components/UserSidebar";
+import { useSocket } from "./hooks/useSocket";
+import io from "socket.io-client";
+import { Button } from "./components/ui/button";
+import { Sheet, SheetContent, SheetTrigger } from "./components/ui/sheet";
+import { Toaster } from "./components/ui/sonner";
+import { RoomList } from "./components/RoomList";
+import { MessageCircle, Moon, Sun, Users, Wifi, WifiOff } from "lucide-react";
+import LandingPage from "./components/LandingPage";
+import { Routes, Route } from "react-router-dom";
+import  Navbar  from "./components/Navbar";
 
-export default function App() {
+export function ChatApp() {
   const [username, setUsername] = useState(null);
   const [currentRoom, setCurrentRoom] = useState(null);
   const [rooms, setRooms] = useState([]);
@@ -31,7 +34,7 @@ export default function App() {
     deleteMessage,
     pinMessage,
     muteUser,
-    unmuteUser
+    unmuteUser,
   } = useSocket(username, currentRoom?._id);
 
   // Check if current user is a moderator
@@ -45,18 +48,18 @@ export default function App() {
       setIsMobile(window.innerWidth < 768);
     };
     checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
   // Dark mode toggle
   useEffect(() => {
     if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-      document.body.classList.add('dark');
+      document.documentElement.classList.add("dark");
+      document.body.classList.add("dark");
     } else {
-      document.documentElement.classList.remove('dark');
-      document.body.classList.remove('dark');
+      document.documentElement.classList.remove("dark");
+      document.body.classList.remove("dark");
     }
   }, [isDarkMode]);
 
@@ -65,7 +68,7 @@ export default function App() {
     if (!username) return;
 
     // Load initial rooms
-    fetch('http://localhost:3001/api/rooms')
+    fetch("http://localhost:3001/api/rooms")
       .then(async (res) => {
         if (!res.ok) {
           const error = await res.text();
@@ -75,16 +78,16 @@ export default function App() {
       })
       .then(setRooms)
       .catch((error) => {
-        console.error('Failed to load rooms:', error);
-        toast.error('Failed to load rooms. Please try again later.');
+        console.error("Failed to load rooms:", error);
+        // silent fallback; toast may be available in project
       });
 
     // Listen for new rooms
-    const socket = io('http://localhost:3001');
-    socket.on('roomCreated', (newRoom) => {
-      setRooms(prev => {
+    const socket = io("http://localhost:3001");
+    socket.on("roomCreated", (newRoom) => {
+      setRooms((prev) => {
         // Avoid duplicates
-        if (prev.some(r => r._id === newRoom._id)) return prev;
+        if (prev.some((r) => r._id === newRoom._id)) return prev;
         return [...prev, newRoom];
       });
     });
@@ -96,22 +99,22 @@ export default function App() {
 
   const handleCreateRoom = async (name) => {
     try {
-      const response = await fetch('http://localhost:3001/api/rooms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("http://localhost:3001/api/rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, createdBy: username }),
       });
-      
+
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to create room');
+        throw new Error(error.error || "Failed to create room");
       }
-      
+
       const newRoom = await response.json();
-      setRooms(prev => [...prev, newRoom]);
+      setRooms((prev) => [...prev, newRoom]);
       return newRoom;
     } catch (error) {
-      console.error('Failed to create room:', error);
+      console.error("Failed to create room:", error);
       throw error;
     }
   };
@@ -161,12 +164,16 @@ export default function App() {
               {isConnected ? (
                 <>
                   <Wifi className="w-4 h-4 text-green-300" />
-                  <span className="text-xs text-[var(--text-light)] hidden sm:inline">Connected</span>
+                  <span className="text-xs text-[var(--text-light)] hidden sm:inline">
+                    Connected
+                  </span>
                 </>
               ) : (
                 <>
                   <WifiOff className="w-4 h-4 text-red-300" />
-                  <span className="text-xs text-[var(--text-light)] hidden sm:inline">Disconnected</span>
+                  <span className="text-xs text-[var(--text-light)] hidden sm:inline">
+                    Disconnected
+                  </span>
                 </>
               )}
             </div>
@@ -185,7 +192,11 @@ export default function App() {
               onClick={() => setIsDarkMode(!isDarkMode)}
               className="h-10 w-10 p-0 hover:bg-white/20 text-white"
             >
-              {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              {isDarkMode ? (
+                <Sun className="w-5 h-5" />
+              ) : (
+                <Moon className="w-5 h-5" />
+              )}
             </Button>
 
             {isMobile && (
@@ -251,5 +262,17 @@ export default function App() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <>
+      <Navbar />
+      <Routes>
+        <Route path="/landingpage" element={<LandingPage />} />
+        <Route path="/*" element={<ChatApp />} />
+      </Routes>
+    </>
   );
 }
