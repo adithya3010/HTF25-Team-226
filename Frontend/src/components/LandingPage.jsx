@@ -1,23 +1,64 @@
 import React from 'react'
-import Beams from './Beams';
-import Navbar from './Navbar';
+import { Link } from 'react-router-dom'
+import Beams from './Beams'
 
 const LandingPage = () => {
   return (
-    <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden' }}>
-      {/* Background beams - absolute, full-viewport, behind content */}
-      <div style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', zIndex: 0, pointerEvents: 'none' }}>
-        <div class="absolute inset-0 -z-10 h-full w-full items-center px-5 py-24 [background:radial-gradient(125%_125%_at_50%_10%,#000_40%,#63e_100%)]"></div>
+    <section className="relative min-h-[calc(100vh-3.5rem)] overflow-hidden bg-gradient-to-b from-slate-950 via-black to-black">
+      {/* Animated beams background */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute inset-0 opacity-60 mix-blend-screen">
+          <Beams beamNumber={10} beamHeight={18} speed={1.4} noiseIntensity={1.2} lightColor='#ab7ce4' />
+        </div>
       </div>
-              <h1 className='z-1'>CHAT ROOM</h1>
 
-      {/* Foreground content - centered and above beams */}
-      <div style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%',  color: 'white',  padding: '2rem' }}>
-        <h1 className='text-4xl font-bold'>CHAT ROOM</h1>
-        <p className='mt-2 text-lg'>Join the conversation and connect with others!</p>
+      {/* Hero content */}
+      <div className="relative z-10 mx-auto flex min-h-[inherit] max-w-6xl flex-col justify-center px-6 py-16 text-white md:px-12">
+        <div className="max-w-3xl space-y-6 text-center md:text-left">
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm uppercase tracking-[0.35em] text-white/70">
+            Live Communities
+          </div>
+          <h1 className="text-4xl font-bold leading-tight tracking-tight sm:text-5xl md:text-6xl">
+            Your modern space to talk, share, and stay connected
+          </h1>
+          <p className="text-lg text-white/80 sm:text-xl">
+            Drop into real-time conversations, swap ideas, and collaborate with your teams. Streamlined moderation tools, rich media support, and a beautifully responsive experience await.
+          </p>
+
+          <div className="flex flex-col items-center gap-4 pt-4 sm:flex-row sm:justify-start">
+            <Link
+              to="/"
+              className="inline-flex w-full items-center justify-center rounded-full bg-violet-500 px-6 py-3 text-base font-semibold text-white shadow-lg shadow-violet-500/30 transition hover:translate-y-[-1px] hover:bg-violet-400 sm:w-auto"
+            >
+              Enter a room
+            </Link>
+            <Link
+              to="/chat"
+              className="inline-flex w-full items-center justify-center rounded-full border border-white/30 px-6 py-3 text-base font-semibold text-white/90 backdrop-blur hover:border-white/60 hover:text-white sm:w-auto"
+            >
+              Explore the chat
+            </Link>
+          </div>
+
+          <dl className="grid gap-6 pt-8 text-left sm:grid-cols-3">
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <dt className="text-sm uppercase tracking-wide text-white/60">Realtime</dt>
+              <dd className="text-xl font-semibold">Sockets powered messaging</dd>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <dt className="text-sm uppercase tracking-wide text-white/60">Media Ready</dt>
+              <dd className="text-xl font-semibold">Images, video & PDF support</dd>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <dt className="text-sm uppercase tracking-wide text-white/60">Moderation</dt>
+              <dd className="text-xl font-semibold">Pin, mute & manage rooms</dd>
+            </div>
+          </dl>
+        </div>
       </div>
-    </div>
+    </section>
   )
 }
 
 export default LandingPage
+
