@@ -8,11 +8,17 @@ const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const MessageModel = require('./models/Message');
 const PdfModel = require('./models/Pdf');
+const VideoModel = require('./models/Video');
 const RoomModel = require('./models/Room');
 const multer = require('multer');
 
 // Accept file uploads in memory (we'll store buffers in MongoDB)
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 16 * 1024 * 1024 } });
+const upload = multer({ 
+    storage: multer.memoryStorage(), 
+    limits: { 
+        fileSize: 50 * 1024 * 1024 // Increased to 50MB to handle video files
+    } 
+});
 
 const app = express();
 
@@ -150,6 +156,8 @@ function broadcastUsers(roomId) {
             username: u.username,
             isMuted: !!u.isMuted,
             isModerator: !!u.isModerator,
+            isOnline: true, // Connected users are always online
+            color: u.color // Include user color for avatar
         }));
     io.to(roomId).emit('users', roomUsers);
 }
@@ -331,13 +339,111 @@ io.on('connection', async (socket) => {
     });
 });
 
-// Upload PDF endpoint - stores PDF as binary Buffer in MongoDB
+
+// Upload video endpoint
+app.post('/api/upload/video', upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+        const { originalname, buffer, mimetype } = req.file;
+        
+        // Create video document
+        const doc = await VideoModel.create({
+            filename: originalname,
+            data: buffer,
+            contentType: mimetype,
+            size: buffer.length,
+            uploadedBy: req.query.username || 'Anonymous'
+        });
+
+        return res.json({
+            id: doc._id,
+            url: `/api/video/${doc._id}`,
+            filename: doc.filename,
+            size: doc.size,
+            contentType: doc.contentType
+        });
+    } catch (err) {
+        console.error('Video upload error:', err);
+        return res.status(500).json({ error: 'Upload failed' });
+    }
+});
+
+// Serve video from DB
+app.get('/api/video/:id', async (req, res) => {
+    try {
+        const doc = await VideoModel.findById(req.params.id).lean().exec();
+        if (!doc) return res.status(404).send('Not found');
+        
+        // Set proper headers for video streaming
+        res.setHeader('Content-Type', doc.contentType);
+        res.setHeader('Content-Disposition', `inline; filename="${doc.filename}"`);
+        res.setHeader('Accept-Ranges', 'bytes');
+
+        // Handle range requests for video streaming
+        const range = req.headers.range;
+        if (range) {
+            const videoBuffer = doc.data.buffer ? Buffer.from(doc.data.buffer) : doc.data;
+            const videoSize = videoBuffer.length;
+            const parts = range.replace(/bytes=/, '').split('-');
+            const start = parseInt(parts[0], 10);
+            const end = parts[1] ? parseInt(parts[1], 10) : videoSize - 1;
+            const chunksize = (end - start) + 1;
+            const videoChunk = videoBuffer.slice(start, end + 1);
+
+            res.setHeader('Content-Range', `bytes ${start}-${end}/${videoSize}`);
+            res.setHeader('Content-Length', chunksize);
+            res.status(206);
+            return res.send(videoChunk);
+        }
+
+        return res.send(doc.data.buffer ? Buffer.from(doc.data.buffer) : doc.data);
+    } catch (err) {
+        console.error('Serve video error:', err);
+        return res.status(500).send('Server error');
+    }
+});
+
+const pdfParse = require('pdf-parse');
+
+// Upload PDF endpoint - stores PDF as binary Buffer in MongoDB with metadata
 app.post('/api/upload/pdf', upload.single('file'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
         const { originalname, buffer, mimetype } = req.file;
-        const doc = await PdfModel.create({ filename: originalname, data: buffer, contentType: mimetype });
-        return res.json({ id: doc._id, url: `/api/pdf/${doc._id}` });
+        
+        // Extract PDF metadata
+        let pdfData;
+        try {
+            pdfData = await pdfParse(buffer);
+        } catch (parseErr) {
+            console.error('PDF parse error:', parseErr);
+            pdfData = { numpages: 0, info: {} };
+        }
+
+        // Create PDF document with metadata
+        const doc = await PdfModel.create({
+            filename: originalname,
+            data: buffer,
+            contentType: mimetype,
+            size: buffer.length,
+            pages: pdfData.numpages,
+            metadata: {
+                title: pdfData.info?.Title || originalname,
+                author: pdfData.info?.Author || 'Unknown',
+                subject: pdfData.info?.Subject || '',
+                keywords: pdfData.info?.Keywords ? pdfData.info.Keywords.split(',').map(k => k.trim()) : []
+            },
+            uploadedBy: req.query.username || 'Anonymous'
+        });
+
+        return res.json({
+            id: doc._id,
+            url: `/api/pdf/${doc._id}`,
+            filename: doc.filename,
+            pages: doc.pages,
+            size: doc.size,
+            metadata: doc.metadata
+        });
     } catch (err) {
         console.error('Upload error', err);
         return res.status(500).json({ error: 'Upload failed' });

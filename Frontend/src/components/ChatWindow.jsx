@@ -31,6 +31,135 @@ export function ChatWindow({
     return groups;
   }, {});
 
+  const renderMessageContent = (content) => {
+    // Try parsing as JSON first (for PDFs)
+    try {
+      const parsedContent = JSON.parse(content);
+      if (parsedContent.type === 'pdf') {
+        return (
+          <div className="flex flex-col gap-2">
+            <a 
+              href={parsedContent.url}
+              target="_blank" 
+              rel="noreferrer" 
+              className="flex items-center gap-2 p-3 rounded-lg bg-white/50 dark:bg-gray-800/50 hover:bg-white/70 dark:hover:bg-gray-800/70 transition-all shadow-sm hover:shadow-md"
+            >
+              <div className="p-2 rounded-md bg-red-100 dark:bg-red-900/50">
+                <svg className="w-8 h-8 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">
+                  {parsedContent.filename}
+                </div>
+                <div className="text-xs text-gray-600 dark:text-gray-400">
+                  {parsedContent.pages ? `${parsedContent.pages} pages · ` : ''}
+                  {(parsedContent.size / (1024 * 1024)).toFixed(1)} MB
+                </div>
+              </div>
+              <svg className="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </a>
+          </div>
+        );
+      }
+    } catch {}
+
+    // Handle other file types
+    if (content.startsWith('data:image/')) {
+      return (
+        <div className="group relative inline-block">
+          <img
+            src={content}
+            alt="attachment"
+            className="max-w-xs md:max-w-sm rounded-lg shadow-md group-hover:shadow-lg transition-all duration-300 ease-in-out transform group-hover:scale-[1.02]"
+          />
+          <div className="absolute inset-0 rounded-lg bg-black/0 group-hover:bg-black/5 transition-colors duration-300" />
+        </div>
+      );
+    } else if (content.includes('"type":"video"')) {
+      try {
+        const videoInfo = JSON.parse(content);
+        return (
+          <div className="group relative inline-block">
+            <div className="max-w-xs md:max-w-sm rounded-lg shadow-md group-hover:shadow-lg transition-all duration-300 bg-white/50 dark:bg-gray-800/50 p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center">
+                  <svg className="w-4 h-4 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">
+                    {videoInfo.filename}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    {(videoInfo.size / (1024 * 1024)).toFixed(1)} MB · {videoInfo.mimeType || 'Video'}
+                  </div>
+                </div>
+              </div>
+              <div className="relative overflow-hidden rounded-lg">
+                <video 
+                  controls 
+                  src={videoInfo.url}
+                  className="w-full rounded-lg" 
+                  preload="metadata"
+                />
+                <div className="absolute inset-0 rounded-lg bg-black/0 group-hover:bg-black/5 transition-colors duration-300 pointer-events-none" />
+              </div>
+            </div>
+          </div>
+        );
+      } catch {
+        return <p className="text-red-500">Invalid video message format</p>;
+      }
+    } else if (content.includes('"type":"audio"')) {
+      try {
+        const audioInfo = JSON.parse(content);
+        return (
+          <div className="max-w-sm group">
+            <div className="p-3 rounded-lg bg-white/50 dark:bg-gray-800/50 shadow-sm hover:shadow-md transition-all">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
+                  <svg className="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">
+                    {audioInfo.filename}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    {(audioInfo.size / (1024 * 1024)).toFixed(1)} MB · {audioInfo.mimeType || 'Audio'}
+                  </div>
+                </div>
+              </div>
+              <div className="relative">
+                <audio 
+                  controls 
+                  src={audioInfo.data}
+                  className="w-full rounded border border-gray-200 dark:border-gray-700 [&::-webkit-media-controls-panel]:bg-white/95 dark:[&::-webkit-media-controls-panel]:bg-gray-800/95 [&::-webkit-media-controls-current-time-display]:text-gray-700 dark:[&::-webkit-media-controls-current-time-display]:text-gray-300 [&::-webkit-media-controls-time-remaining-display]:text-gray-700 dark:[&::-webkit-media-controls-time-remaining-display]:text-gray-300"
+                />
+                <div className="absolute inset-0 rounded bg-black/0 group-hover:bg-black/5 dark:group-hover:bg-white/5 transition-colors pointer-events-none" />
+              </div>
+            </div>
+          </div>
+        );
+      } catch {
+        return <p className="text-red-500">Invalid audio message format</p>;
+      }
+    }
+    
+    // Default text message
+    return (
+      <p className="whitespace-pre-wrap break-words max-w-[65ch] overflow-wrap-anywhere hyphens-auto">
+        {content}
+      </p>
+    );
+  };
+
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
       {Object.entries(groupedMessages).map(([date, dateMessages]) => (
@@ -52,7 +181,7 @@ export function ChatWindow({
                 }`}
               >
                 <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-white"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-white shadow-sm"
                   style={{
                     backgroundColor: message.userColor || '#4B5563',
                   }}
@@ -76,7 +205,7 @@ export function ChatWindow({
                     message.username === currentUsername ? 'flex-row-reverse' : ''
                   }`}>
                     <div
-                      className={`rounded-lg px-4 py-2 ${
+                      className={`rounded-lg px-4 py-2 max-w-[85%] break-words ${
                         message.isPinned
                           ? 'bg-[#8FBC8F] text-[#1A1A1A]'
                           : message.username === currentUsername
@@ -84,25 +213,7 @@ export function ChatWindow({
                           : 'bg-[#F3F2ED] text-[#1A1A1A]'
                       }`}
                     >
-                      {typeof message.content === 'string' && (
-                        message.content.startsWith('data:image/') ? (
-                          <img
-                            src={message.content}
-                            alt="attachment"
-                            className="max-w-xs md:max-w-sm rounded-md border border-black/10"
-                          />
-                        ) : message.content.startsWith('data:video/') ? (
-                          <video controls src={message.content} className="max-w-xs md:max-w-sm rounded-md" />
-                        ) : message.content.startsWith('data:audio/') ? (
-                          <audio controls src={message.content} className="w-full mt-1" />
-                        ) : message.content.startsWith('data:application/pdf') ? (
-                          <a href={message.content} target="_blank" rel="noreferrer" className="underline">
-                            View PDF
-                          </a>
-                        ) : (
-                          <p className="whitespace-pre-wrap break-words">{message.content}</p>
-                        )
-                      )}
+                      {typeof message.content === 'string' && renderMessageContent(message.content)}
                     </div>
 
                     {/* Message Actions */}

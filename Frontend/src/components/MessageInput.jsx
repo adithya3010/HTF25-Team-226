@@ -59,23 +59,132 @@ export function MessageInput({ onSendMessage, onTyping, onStopTyping, isMuted })
           try {
             const form = new FormData();
             form.append('file', f, f.name);
+
+            // Show upload progress toast
+            const progressToast = toast.loading(`Uploading ${f.name}...`, {
+              description: '0%',
+              duration: Infinity,
+              style: { background: '#000000', color: '#ffffff' }
+            });
+
             const resp = await fetch('http://localhost:3001/api/upload/pdf', {
               method: 'POST',
               body: form,
+              // Add upload progress handling
+              onUploadProgress: (progressEvent) => {
+                const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                toast.loading(`Uploading ${f.name}...`, {
+                  id: progressToast,
+                  description: `${percentCompleted}%`,
+                  style: { background: '#000000', color: '#ffffff' }
+                });
+              }
             });
+
             if (!resp.ok) {
-              toast.error('PDF upload failed');
+              toast.error(`Failed to upload ${f.name}`, {
+                description: 'The server rejected the file',
+                style: { background: '#000000', color: '#ffffff' }
+              });
             } else {
               const json = await resp.json();
               const url = `http://localhost:3001${json.url}`;
-              onSendMessage(url);
+              toast.success(`${f.name} uploaded successfully`, {
+                description: 'PDF is now available in chat',
+                style: { background: '#000000', color: '#ffffff' }
+              });
+              // Send a richer message for PDFs
+              onSendMessage(JSON.stringify({
+                type: 'pdf',
+                url: url,
+                filename: f.name,
+                size: f.size,
+                pages: json.pages // We'll add this to the backend response
+              }));
             }
+            toast.dismiss(progressToast);
           } catch (err) {
-            toast.error('PDF upload failed');
+            toast.error(`Failed to upload ${f.name}`, {
+              description: 'Check your connection and try again',
+              style: { background: '#000000', color: '#ffffff' }
+            });
           }
         } else {
-          const dataUrl = await readFileAsDataUrl(f);
-          onSendMessage(String(dataUrl));
+          try {
+
+            // Handle video files
+            if (f.type.startsWith('video/')) {
+              const form = new FormData();
+              form.append('file', f, f.name);
+
+              try {
+                const progressToast = toast.loading(`Uploading ${f.name}...`, {
+                  description: '0%',
+                  duration: Infinity,
+                  style: { background: '#000000', color: '#ffffff' }
+                });
+
+                const resp = await fetch('http://localhost:3001/api/upload/video', {
+                  method: 'POST',
+                  body: form
+                });
+
+                if (!resp.ok) {
+                  throw new Error('Upload failed');
+                }
+
+                const json = await resp.json();
+                const url = `http://localhost:3001${json.url}`;
+                
+                toast.success(`${f.name} uploaded successfully`, {
+                  description: 'Video is now available in chat',
+                  style: { background: '#000000', color: '#ffffff' }
+                });
+
+                onSendMessage(JSON.stringify({
+                  type: 'video',
+                  url: url,
+                  filename: f.name,
+                  size: f.size,
+                  mimeType: f.type
+                }));
+              } catch (err) {
+                toast.error(`Failed to upload ${f.name}`, {
+                  description: 'Check your connection and try again',
+                  style: { background: '#000000', color: '#ffffff' }
+                });
+              } finally {
+                toast.dismiss(progressToast);
+              }
+            } 
+            // Handle audio files
+            else if (f.type.startsWith('audio/')) {
+              const dataUrl = await readFileAsDataUrl(f);
+              onSendMessage(JSON.stringify({
+                type: 'audio',
+                data: dataUrl,
+                filename: f.name,
+                size: f.size,
+                mimeType: f.type
+              }));
+            }
+            // Handle other files (images)
+            else {
+              const dataUrl = await readFileAsDataUrl(f);
+              onSendMessage(String(dataUrl));
+            }
+            
+            if (!f.type.startsWith('video/')) {
+              toast.success(`${f.name} processed successfully`, {
+                style: { background: '#000000', color: '#ffffff' }
+              });
+            }
+          } catch (err) {
+            toast.error(`Failed to process ${f.name}`, {
+              description: 'Check your file and try again',
+              style: { background: '#000000', color: '#ffffff' }
+            });
+          }
         }
       }
 
@@ -274,17 +383,28 @@ export function MessageInput({ onSendMessage, onTyping, onStopTyping, isMuted })
         </Button>
 
         {/* Text input */}
-        <input
+        <textarea
           ref={inputRef}
-          type="text"
           value={message}
+          rows="1"
           onChange={(e) => {
             setMessage(e.target.value);
             handleTyping();
+            // Auto-adjust height
+            e.target.style.height = 'auto';
+            e.target.style.height = Math.min(e.target.scrollHeight, 150) + 'px';
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              if (message.trim() || files.length > 0) {
+                handleSubmit(e);
+              }
+            }
           }}
           placeholder={isMuted ? 'You are muted' : 'Type a message...'}
           disabled={isMuted}
-          className="flex-1 px-4 py-2 rounded-full border focus:outline-none focus:ring-2 focus:ring-[#D2B48C] dark:bg-[#3a5656] dark:border-[#2F4F4F]"
+          className="flex-1 px-4 py-2 rounded-full border focus:outline-none focus:ring-2 focus:ring-[#D2B48C] dark:bg-[#3a5656] dark:border-[#2F4F4F] resize-none min-h-[40px] max-h-[150px] overflow-y-auto"
         />
 
         {/* Send */}

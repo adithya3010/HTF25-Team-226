@@ -24,12 +24,37 @@ export function useSocket(username, roomId) {
     // Connection events
     newSocket.on('connect', () => {
       setIsConnected(true);
-      toast.success('Connected to chat server');
+      toast.success('Connected to chat server', {
+        description: `Joined room as ${username}`,
+        duration: 3000,
+        style: { 
+          background: '#000000',
+          color: '#ffffff'
+        }
+      });
     });
 
     newSocket.on('disconnect', () => {
       setIsConnected(false);
-      toast.error('Disconnected from chat server');
+      toast.error('Disconnected from chat server', {
+        description: 'Attempting to reconnect...',
+        duration: 4000,
+        style: { 
+          background: '#000000',
+          color: '#ffffff'
+        }
+      });
+    });
+
+    newSocket.on('connect_error', (error) => {
+      toast.error('Failed to connect', {
+        description: 'Please check your internet connection',
+        duration: 4000,
+        style: { 
+          background: '#000000',
+          color: '#ffffff'
+        }
+      });
     });
 
     // Message events
@@ -50,7 +75,12 @@ export function useSocket(username, roomId) {
 
     newSocket.on('messageDeleted', (messageId) => {
       setMessages((prev) => prev.filter((m) => m.id !== messageId));
-      toast.info('A message was deleted by a moderator');
+      toast.info('A message was deleted by a moderator', {
+        style: { 
+          background: '#000000',
+          color: '#ffffff'
+        }
+      });
     });
 
     newSocket.on('messagePinned', (messageId) => {
@@ -66,20 +96,42 @@ export function useSocket(username, roomId) {
       setUsers(userList);
     });
 
-    newSocket.on('userJoined', (user) => {
-      toast.info(`${user.username} joined the chat`);
+    newSocket.on('userJoined', (username) => {
+      toast.info(`${username} joined the chat`, {
+        style: { 
+          background: '#000000',
+          color: '#ffffff'
+        }
+      });
     });
 
     newSocket.on('userLeft', (username) => {
-      toast.info(`${username} left the chat`);
+      toast.info(`${username} left the chat`, {
+        style: { 
+          background: '#000000',
+          color: '#ffffff'
+        }
+      });
+      // Also remove user from users list immediately
+      setUsers(prev => prev.filter(u => u.username !== username));
     });
 
     newSocket.on('userMuted', (mutedUsername) => {
-      toast.warning(`${mutedUsername} was muted`);
+      toast.warning(`${mutedUsername} was muted`, {
+        style: { 
+          background: '#000000',
+          color: '#ffffff'
+        }
+      });
     });
 
     newSocket.on('userUnmuted', (unmutedUsername) => {
-      toast.success(`${unmutedUsername} was unmuted`);
+      toast.success(`${unmutedUsername} was unmuted`, {
+        style: { 
+          background: '#000000',
+          color: '#ffffff'
+        }
+      });
     });
 
     // Typing events
