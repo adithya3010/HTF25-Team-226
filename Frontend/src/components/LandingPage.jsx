@@ -8,7 +8,7 @@ const LandingPage = () => {
       {/* Animated beams background */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute inset-0 opacity-60 mix-blend-screen">
-          <Beams beamNumber={10} beamHeight={18} speed={1.4} noiseIntensity={1.2} lightColor='#ab7ce4' />
+          <Beams beamNumber={10} beamHeight={18} speed={1.4} noiseIntensity={1.4} lightColor='#3F51B5' />
         </div>
       </div>
 
@@ -28,7 +28,7 @@ const LandingPage = () => {
           <div className="flex flex-col items-center gap-4 pt-4 sm:flex-row sm:justify-start">
             <Link
               to="/"
-              className="inline-flex w-full items-center justify-center rounded-full bg-violet-500 px-6 py-3 text-base font-semibold text-white shadow-lg shadow-violet-500/30 transition hover:translate-y-[-1px] hover:bg-violet-400 sm:w-auto"
+              className="inline-flex w-full items-center justify-center rounded-full bg-indigo-500 px-6 py-3 text-base font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:translate-y-[-1px] hover:bg-indigo-400 sm:w-auto"
             >
               Enter a room
             </Link>

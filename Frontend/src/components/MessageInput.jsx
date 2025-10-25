@@ -14,12 +14,12 @@ export function MessageInput({ onSendMessage, onTyping, onStopTyping, isMuted })
 
   const handleTyping = () => {
     onTyping();
-    
+
     // Clear existing timeout
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
-    
+
     // Set new timeout
     typingTimeoutRef.current = setTimeout(() => {
       onStopTyping();
@@ -135,7 +135,7 @@ export function MessageInput({ onSendMessage, onTyping, onStopTyping, isMuted })
 
                 const json = await resp.json();
                 const url = `http://localhost:3001${json.url}`;
-                
+
                 toast.success(`${f.name} uploaded successfully`, {
                   description: 'Video is now available in chat',
                   style: { background: '#000000', color: '#ffffff' }
@@ -156,7 +156,7 @@ export function MessageInput({ onSendMessage, onTyping, onStopTyping, isMuted })
               } finally {
                 toast.dismiss(progressToast);
               }
-            } 
+            }
             // Handle audio files
             else if (f.type.startsWith('audio/')) {
               const dataUrl = await readFileAsDataUrl(f);
@@ -173,7 +173,7 @@ export function MessageInput({ onSendMessage, onTyping, onStopTyping, isMuted })
               const dataUrl = await readFileAsDataUrl(f);
               onSendMessage(String(dataUrl));
             }
-            
+
             if (!f.type.startsWith('video/')) {
               toast.success(`${f.name} processed successfully`, {
                 style: { background: '#000000', color: '#ffffff' }
@@ -263,7 +263,7 @@ export function MessageInput({ onSendMessage, onTyping, onStopTyping, isMuted })
       }
 
       if (f.size > maxSize) {
-        toast.warning(`${name} is too large (max ${Math.round(maxSize / (1024*1024))}MB).`);
+        toast.warning(`${name} is too large (max ${Math.round(maxSize / (1024 * 1024))}MB).`);
         continue;
       }
 
@@ -286,7 +286,7 @@ export function MessageInput({ onSendMessage, onTyping, onStopTyping, isMuted })
   return (
     <form
       onSubmit={handleSubmit}
-      className="p-4 border-t border-[var(--color-accent)]/40 bg-[var(--color-secondary)] dark:bg-[var(--color-primary)]"
+      className="p-4 border-t border-[var(--color-secondary)] bg-[var(--color-secondary)] dark:bg-[var(--color-primary)]"
     >
       {/* Selected files preview */}
       {files.length > 0 && (
@@ -302,7 +302,7 @@ export function MessageInput({ onSendMessage, onTyping, onStopTyping, isMuted })
             return (
               <div
                 key={`${f.name}-${idx}`}
-                className="flex items-center gap-2 rounded-md bg-[var(--color-accent)]/20 text-[var(--text-dark)] dark:bg-[var(--color-notify)]/20 dark:text-[var(--text-light)] px-3 py-2"
+                className="flex items-center gap-2 rounded-md bg-indigo-900/20 text-white px-3 py-2"
               >
                 {isImage ? (
                   <img src={preview} alt={f.name} className="w-10 h-10 rounded-md object-cover" />
@@ -318,7 +318,7 @@ export function MessageInput({ onSendMessage, onTyping, onStopTyping, isMuted })
                 <button
                   type="button"
                   onClick={() => removeFile(idx)}
-                  className="rounded-full p-0.5 ml-2 hover:bg-[var(--color-accent)]/50 dark:hover:bg-[var(--color-notify)]/40"
+                  className="rounded-full p-0.5 ml-2 hover:bg-indigo-800/50"
                   aria-label={`Remove ${f.name}`}
                 >
                   <X className="w-3.5 h-3.5" />
@@ -329,7 +329,7 @@ export function MessageInput({ onSendMessage, onTyping, onStopTyping, isMuted })
         </div>
       )}
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center  gap-2 text-white">
         {/* Emoji toggle */}
         <div className="relative">
           <Button
@@ -338,7 +338,7 @@ export function MessageInput({ onSendMessage, onTyping, onStopTyping, isMuted })
             size="icon"
             onClick={() => setShowEmoji((v) => !v)}
             disabled={isMuted}
-            className="rounded-full"
+            className="rounded-full py-1"
             aria-label="Add emoji"
           >
             <Smile className="w-5 h-5" />
@@ -404,14 +404,14 @@ export function MessageInput({ onSendMessage, onTyping, onStopTyping, isMuted })
           }}
           placeholder={isMuted ? 'You are muted' : 'Type a message...'}
           disabled={isMuted}
-          className="flex-1 px-4 py-2 rounded-full border focus:outline-none focus:ring-2 focus:ring-[#D2B48C] dark:bg-[#3a5656] dark:border-[#2F4F4F] resize-none min-h-[40px] max-h-[150px] overflow-y-auto"
+          className="flex-1 px-4 py-2 rounded-full border focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-slate-800 dark:border-slate-700 resize-none min-h-[40px] max-h-[150px] overflow-y-auto"
         />
 
         {/* Send */}
         <Button
           type="submit"
           disabled={(message.trim() === '' && files.length === 0) || isMuted}
-          className="rounded-full px-6 bg-[var(--color-primary)] text-[var(--text-light)] hover:opacity-90"
+          className="rounded-full px-6 bg-gradient-to-r from-indigo-600 to-indigo-900 text-white hover:opacity-90"
         >
           <Send className="w-4 h-4" />
         </Button>

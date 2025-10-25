@@ -7,8 +7,8 @@ input, textarea {
 }
 :root {
   /* Brand palette */
-  --color-primary: #2F4F4F; /* Moss Green */
-  --color-secondary: #E6E6D8; /* Olive Cream */
+  --color-primary: #F3F2ED; 
+  --color-secondary: #0C0C0C;
   --color-accent: #D2B48C; /* Sand Beige */
   --color-bubble-self: #4E6E5D; /* Muted green */
   --color-bubble-other: #F3F2ED; /* Soft background */
@@ -40,4 +40,17 @@ input, textarea {
 body.dark, html.dark {
   background-color: var(--color-primary);
   color: var(--text-light);
+}
+
+/* Hide native scrollbar arrows and minimize textarea scrollbar visuals */
+textarea {
+  /* Firefox */
+  scrollbar-width: none;
+  /* IE 10+ */
+  -ms-overflow-style: none;
+}
+/* Webkit browsers */
+textarea::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }

@@ -2,14 +2,14 @@ import { motion } from 'framer-motion';
 import { Button } from './ui/button';
 import { User, Crown, Volume2, VolumeX } from 'lucide-react';
 
-export function UserSidebar({ 
-  users, 
-  currentUsername, 
-  isModerator, 
-  onMuteUser, 
-  onUnmuteUser, 
-  onClose, 
-  isMobile 
+export function UserSidebar({
+  users,
+  currentUsername,
+  isModerator,
+  onMuteUser,
+  onUnmuteUser,
+  onClose,
+  isMobile
 }) {
   const sortedUsers = [...users].sort((a, b) => {
     // Sort by moderator status first
@@ -23,30 +23,29 @@ export function UserSidebar({
   });
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-gray-800">
+    <div className="h-full flex flex-col bg-gradient-to-br from-slate-950 via-black to-indigo-950">
       {isMobile && (
-        <div className="p-4 border-b dark:border-gray-700">
+        <div className="p-4 border-b border-indigo-800/50">
           <Button onClick={onClose} variant="ghost" className="w-full justify-start">
             ← Back to Chat
           </Button>
         </div>
       )}
 
-      <div className="p-4 border-b dark:border-gray-700">
+      <div className="p-4 border-b border-indigo-800/50 text-[var(--color-primary)]">
         <h2 className="text-lg font-semibold">
           Users ({users.length})
         </h2>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto ">
         {sortedUsers.map((user) => (
           <motion.div
             key={user.username}
             initial={isMobile ? { x: 20, opacity: 0 } : false}
             animate={isMobile ? { x: 0, opacity: 1 } : false}
-            className={`p-4 flex items-center gap-3 border-b last:border-b-0 dark:border-gray-700 ${
-              user.username === currentUsername ? 'bg-amber-50 dark:bg-amber-900/20' : ''
-            }`}
+            className={`p-4 flex items-center gap-3 border-b last:border-b-0 border-indigo-800/50 ${user.username === currentUsername ? 'bg-indigo-900/30' : ''
+              }`}
           >
             <div
               className="w-10 h-10 rounded-full flex items-center justify-center text-white"
@@ -60,7 +59,7 @@ export function UserSidebar({
             </div>
 
             <div className="flex-1">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 text-[var(--color-primary)]">
                 <span className="font-medium">
                   {user.username}
                   {user.username === currentUsername && ' (You)'}
@@ -72,9 +71,8 @@ export function UserSidebar({
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${
-                  user.isOnline ? 'bg-green-500' : 'bg-gray-300'
-                }`} />
+                <div className={`w-2 h-2 rounded-full ${user.isOnline ? 'bg-green-500' : 'bg-gray-300'
+                  }`} />
                 <span className="text-sm text-gray-500 dark:text-gray-400">
                   {user.isOnline ? 'Online' : 'Offline'}
                 </span>
