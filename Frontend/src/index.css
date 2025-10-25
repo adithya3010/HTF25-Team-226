@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+input, textarea {
+  color: var(--text-light);
+}
+:root {
+  /* Brand palette */
+  --color-primary: #2F4F4F; /* Moss Green */
+  --color-secondary: #E6E6D8; /* Olive Cream */
+  --color-accent: #D2B48C; /* Sand Beige */
+  --color-bubble-self: #4E6E5D; /* Muted green */
+  --color-bubble-other: #F3F2ED; /* Soft background */
+  --color-notify: #8FBC8F; /* Light green highlight */
+  --color-error: #C94F4F; /* Error / Warning */
+  --text-light: #F9F9F9;
+  --text-dark: #1A1A1A;
+
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  background-color: var(--color-secondary);
+  color: var(--text-dark);
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+}
+
+.dark {
+  background-color: var(--color-primary);
+  color: var(--text-light);
+}
+
+body.dark, html.dark {
+  background-color: var(--color-primary);
+  color: var(--text-light);
+}

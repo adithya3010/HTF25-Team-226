@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Real-Time Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="style.css" />
+  
+  <!-- timeago.js for relative timestamps -->
+  <script src="https://unpkg.com/timeago.js@4.0.2/dist/timeago.min.js"></script>
+</head>
+<body>
+  <div id="main-wrapper">
+    
+    <!-- Sidebar: Online Users -->
+    <div id="sidebar">
+      <h3>Online Users</h3>
+      <ul id="user-list"></ul>
+    </div>
+
+    <!-- Chat Interface -->
+    <div id="chat-container">
+      <ul id="messages"></ul>
+      
+      <form id="chat-form">
+        <input id="msg-input" type="text" autocomplete="off" placeholder="Type your message..." />
+        <button type="submit">Send</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>
