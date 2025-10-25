@@ -84,14 +84,24 @@ export function ChatWindow({
                           : 'bg-[#F3F2ED] text-[#1A1A1A]'
                       }`}
                     >
-                      {typeof message.content === 'string' && message.content.startsWith('data:image/') ? (
-                        <img
-                          src={message.content}
-                          alt="attachment"
-                          className="max-w-xs md:max-w-sm rounded-md border border-black/10"
-                        />
-                      ) : (
-                        <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                      {typeof message.content === 'string' && (
+                        message.content.startsWith('data:image/') ? (
+                          <img
+                            src={message.content}
+                            alt="attachment"
+                            className="max-w-xs md:max-w-sm rounded-md border border-black/10"
+                          />
+                        ) : message.content.startsWith('data:video/') ? (
+                          <video controls src={message.content} className="max-w-xs md:max-w-sm rounded-md" />
+                        ) : message.content.startsWith('data:audio/') ? (
+                          <audio controls src={message.content} className="w-full mt-1" />
+                        ) : message.content.startsWith('data:application/pdf') ? (
+                          <a href={message.content} target="_blank" rel="noreferrer" className="underline">
+                            View PDF
+                          </a>
+                        ) : (
+                          <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                        )
                       )}
                     </div>
 

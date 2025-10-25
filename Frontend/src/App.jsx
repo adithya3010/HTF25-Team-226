@@ -5,13 +5,17 @@ import { ChatWindow } from './components/ChatWindow';
 import { MessageInput } from './components/MessageInput';
 import { UserSidebar } from './components/UserSidebar';
 import { useSocket } from './hooks/useSocket';
+import io from 'socket.io-client';
 import { Button } from './components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from './components/ui/sheet';
 import { Toaster } from './components/ui/sonner';
+import { RoomList } from './components/RoomList';
 import { MessageCircle, Moon, Sun, Users, Wifi, WifiOff } from 'lucide-react';
 
 export default function App() {
   const [username, setUsername] = useState(null);
+  const [currentRoom, setCurrentRoom] = useState(null);
+  const [rooms, setRooms] = useState([]);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -28,7 +32,7 @@ export default function App() {
     pinMessage,
     muteUser,
     unmuteUser
-  } = useSocket(username);
+  } = useSocket(username, currentRoom?._id);
 
   // Check if current user is a moderator
   const currentUser = users.find((u) => u.username === username);
@@ -56,8 +60,79 @@ export default function App() {
     }
   }, [isDarkMode]);
 
+  // Load rooms and listen for new rooms
+  useEffect(() => {
+    if (!username) return;
+
+    // Load initial rooms
+    fetch('http://localhost:3001/api/rooms')
+      .then(async (res) => {
+        if (!res.ok) {
+          const error = await res.text();
+          throw new Error(error);
+        }
+        return res.json();
+      })
+      .then(setRooms)
+      .catch((error) => {
+        console.error('Failed to load rooms:', error);
+        toast.error('Failed to load rooms. Please try again later.');
+      });
+
+    // Listen for new rooms
+    const socket = io('http://localhost:3001');
+    socket.on('roomCreated', (newRoom) => {
+      setRooms(prev => {
+        // Avoid duplicates
+        if (prev.some(r => r._id === newRoom._id)) return prev;
+        return [...prev, newRoom];
+      });
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [username]);
+
+  const handleCreateRoom = async (name) => {
+    try {
+      const response = await fetch('http://localhost:3001/api/rooms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, createdBy: username }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create room');
+      }
+      
+      const newRoom = await response.json();
+      setRooms(prev => [...prev, newRoom]);
+      return newRoom;
+    } catch (error) {
+      console.error('Failed to create room:', error);
+      throw error;
+    }
+  };
+
   if (!username) {
     return <UsernamePrompt onSubmit={setUsername} />;
+  }
+
+  if (!currentRoom) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
+        <div className="w-full max-w-md">
+          <RoomList
+            rooms={rooms}
+            currentRoom={currentRoom}
+            onRoomSelect={setCurrentRoom}
+            onCreateRoom={handleCreateRoom}
+          />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -76,7 +151,7 @@ export default function App() {
               <MessageCircle className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-[var(--text-light)]">Study Room Chat</h1>
+              <h1 className="text-[var(--text-light)]">{currentRoom.name}</h1>
               <p className="text-xs text-white/80">Welcome, {username}!</p>
             </div>
           </div>
@@ -96,6 +171,14 @@ export default function App() {
               )}
             </div>
 
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setCurrentRoom(null)}
+              className="h-10 px-3 hover:bg-white/20 text-white mr-2"
+            >
+              Leave Room
+            </Button>
             <Button
               variant="ghost"
               size="sm"

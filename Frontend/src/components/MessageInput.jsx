@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 
 export function MessageInput({ onSendMessage, onTyping, onStopTyping, isMuted }) {
   const [message, setMessage] = useState('');
-  const [files, setFiles] = useState([]); // File[]
+  const [files, setFiles] = useState([]); // { file: File, preview: string }
   const [showEmoji, setShowEmoji] = useState(false);
   const typingTimeoutRef = useRef(null);
   const inputRef = useRef(null);
@@ -50,10 +50,33 @@ export function MessageInput({ onSendMessage, onTyping, onStopTyping, isMuted })
     if (!trimmed && !hasFiles) return;
 
     try {
-      // Send images as data URLs so the server still receives strings
-      for (const f of files) {
-        const dataUrl = await readFileAsDataUrl(f);
-        onSendMessage(String(dataUrl));
+      // Send files as data URLs so the server still receives strings
+      for (const item of files) {
+        const f = item.file;
+        const isPdf = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
+        if (isPdf) {
+          // upload to backend and send url
+          try {
+            const form = new FormData();
+            form.append('file', f, f.name);
+            const resp = await fetch('http://localhost:3001/api/upload/pdf', {
+              method: 'POST',
+              body: form,
+            });
+            if (!resp.ok) {
+              toast.error('PDF upload failed');
+            } else {
+              const json = await resp.json();
+              const url = `http://localhost:3001${json.url}`;
+              onSendMessage(url);
+            }
+          } catch (err) {
+            toast.error('PDF upload failed');
+          }
+        } else {
+          const dataUrl = await readFileAsDataUrl(f);
+          onSendMessage(String(dataUrl));
+        }
       }
 
       if (trimmed) {
@@ -94,17 +117,49 @@ export function MessageInput({ onSendMessage, onTyping, onStopTyping, isMuted })
     if (selected.length === 0) return;
     const valid = [];
     for (const f of selected) {
-      const isImage = f.type.startsWith('image/');
-      const withinSize = f.size <= 5 * 1024 * 1024; // 5MB
-      if (!isImage) {
-        toast.warning(`${f.name} is not an image. Only images are supported.`);
+      const type = f.type || '';
+      const name = f.name || '';
+      const isImage = type.startsWith('image/');
+      const isVideo = type.startsWith('video/');
+      const isAudio = type.startsWith('audio/');
+      const isPdf = type === 'application/pdf' || name.toLowerCase().endsWith('.pdf');
+
+      // size limits per type
+      const maxSizeMap = {
+        image: 5 * 1024 * 1024,
+        video: 20 * 1024 * 1024,
+        audio: 10 * 1024 * 1024,
+        pdf: 10 * 1024 * 1024,
+      };
+
+      let allowed = false;
+      let maxSize = 5 * 1024 * 1024;
+      if (isImage) {
+        allowed = true;
+        maxSize = maxSizeMap.image;
+      } else if (isVideo) {
+        allowed = true;
+        maxSize = maxSizeMap.video;
+      } else if (isAudio) {
+        allowed = true;
+        maxSize = maxSizeMap.audio;
+      } else if (isPdf) {
+        allowed = true;
+        maxSize = maxSizeMap.pdf;
+      }
+
+      if (!allowed) {
+        toast.warning(`${name} is not a supported file type.`);
         continue;
       }
-      if (!withinSize) {
-        toast.warning(`${f.name} is too large (max 5MB).`);
+
+      if (f.size > maxSize) {
+        toast.warning(`${name} is too large (max ${Math.round(maxSize / (1024*1024))}MB).`);
         continue;
       }
-      valid.push(f);
+
+      const preview = URL.createObjectURL(f);
+      valid.push({ file: f, preview });
     }
     setFiles((prev) => [...prev, ...valid]);
     // Reset input so same file can be chosen again
@@ -112,7 +167,11 @@ export function MessageInput({ onSendMessage, onTyping, onStopTyping, isMuted })
   };
 
   const removeFile = (idx) => {
-    setFiles((prev) => prev.filter((_, i) => i !== idx));
+    setFiles((prev) => {
+      const item = prev[idx];
+      if (item && item.preview) URL.revokeObjectURL(item.preview);
+      return prev.filter((_, i) => i !== idx);
+    });
   };
 
   return (
@@ -123,22 +182,41 @@ export function MessageInput({ onSendMessage, onTyping, onStopTyping, isMuted })
       {/* Selected files preview */}
       {files.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-2">
-          {files.map((f, idx) => (
-            <div
-              key={`${f.name}-${idx}`}
-              className="flex items-center gap-2 rounded-full bg-[var(--color-accent)]/30 text-[var(--text-dark)] dark:bg-[var(--color-notify)]/25 dark:text-[var(--text-light)] px-3 py-1"
-            >
-              <span className="text-xs max-w-[12rem] truncate">{f.name}</span>
-              <button
-                type="button"
-                onClick={() => removeFile(idx)}
-                className="rounded-full p-0.5 hover:bg-[var(--color-accent)]/50 dark:hover:bg-[var(--color-notify)]/40"
-                aria-label={`Remove ${f.name}`}
+          {files.map((item, idx) => {
+            const f = item.file;
+            const preview = item.preview;
+            const isImage = f.type.startsWith('image/');
+            const isVideo = f.type.startsWith('video/');
+            const isAudio = f.type.startsWith('audio/');
+            const isPdf = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
+
+            return (
+              <div
+                key={`${f.name}-${idx}`}
+                className="flex items-center gap-2 rounded-md bg-[var(--color-accent)]/20 text-[var(--text-dark)] dark:bg-[var(--color-notify)]/20 dark:text-[var(--text-light)] px-3 py-2"
               >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ))}
+                {isImage ? (
+                  <img src={preview} alt={f.name} className="w-10 h-10 rounded-md object-cover" />
+                ) : isVideo ? (
+                  <video src={preview} className="w-16 h-10 rounded-md object-cover" />
+                ) : isAudio ? (
+                  <div className="w-16 h-10 flex items-center justify-center">🎵</div>
+                ) : isPdf ? (
+                  <div className="w-16 h-10 flex items-center justify-center">📄</div>
+                ) : null}
+
+                <span className="text-xs max-w-[12rem] truncate">{f.name}</span>
+                <button
+                  type="button"
+                  onClick={() => removeFile(idx)}
+                  className="rounded-full p-0.5 ml-2 hover:bg-[var(--color-accent)]/50 dark:hover:bg-[var(--color-notify)]/40"
+                  aria-label={`Remove ${f.name}`}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -177,7 +255,7 @@ export function MessageInput({ onSendMessage, onTyping, onStopTyping, isMuted })
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,video/*,audio/*,application/pdf"
           multiple
           onChange={onFileChange}
           className="hidden"
@@ -190,7 +268,7 @@ export function MessageInput({ onSendMessage, onTyping, onStopTyping, isMuted })
           onClick={() => fileInputRef.current?.click()}
           disabled={isMuted}
           className="rounded-full"
-          aria-label="Attach image"
+          aria-label="Attach files"
         >
           <Paperclip className="w-5 h-5" />
         </Button>

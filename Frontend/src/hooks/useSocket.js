@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import io from 'socket.io-client';
 import { toast } from 'sonner';
 
-export function useSocket(username) {
+export function useSocket(username, roomId) {
   const [socket, setSocket] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -10,10 +10,13 @@ export function useSocket(username) {
   const [typingUsers, setTypingUsers] = useState([]);
 
   useEffect(() => {
-    if (!username) return;
+    if (!username || !roomId) return;
 
-    const newSocket = io('http://localhost:5000', {
-      query: { username },
+    const newSocket = io('http://localhost:3001', {
+      query: { username, roomId },
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      timeout: 10000,
     });
 
     setSocket(newSocket);
@@ -92,8 +95,12 @@ export function useSocket(username) {
 
     return () => {
       newSocket.disconnect();
+      setMessages([]);
+      setUsers([]);
+      setTypingUsers([]);
+      setIsConnected(false);
     };
-  }, [username]);
+  }, [username, roomId]);
 
   // Message actions
   const sendMessage = (content) => {
