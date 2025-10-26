@@ -60,7 +60,11 @@ export function useSocket(username, roomId) {
     // Message events
     newSocket.on('message history', (history) => {
       if (Array.isArray(history)) {
-        setMessages(history);
+        // Filter out null messages and sort by timestamp
+        const validMessages = history
+          .filter(msg => msg && msg.timestamp)
+          .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        setMessages(validMessages);
       }
     });
 
@@ -114,16 +118,26 @@ export function useSocket(username, roomId) {
           color: '#ffffff'
         }
       });
+      // Update user status to online if they exist in the list
+      setUsers(prev => prev.map(u => 
+        u.username === username 
+          ? { ...u, isOnline: true, lastSeen: new Date().toISOString() }
+          : u
+      ));
     });
 
-    newSocket.on('userLeft', (username) => {
+    newSocket.on('userLeft', ({ username, lastSeen }) => {
       toast.info(`${username} left the chat`, {
         style: { 
           background: '#000000',
           color: '#ffffff'
         }
       });
-      setUsers(prev => prev.filter(u => u.username !== username));
+      setUsers(prev => prev.map(u => 
+        u.username === username 
+          ? { ...u, isOnline: false, lastSeen }
+          : u
+      ));
     });
 
     newSocket.on('userMuted', (mutedUsername) => {

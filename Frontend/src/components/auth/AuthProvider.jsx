@@ -5,6 +5,7 @@ import { GOOGLE_CLIENT_ID } from '../../config/auth';
 const AuthContext = createContext({
   user: null,
   isAuthenticated: false,
+  isLoading: true,
   login: () => {},
   logout: () => {},
   updateUser: () => {},
@@ -15,6 +16,7 @@ export const useAuth = () => useContext(AuthContext);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     // Check for existing session
@@ -29,6 +31,7 @@ export function AuthProvider({ children }) {
         localStorage.removeItem('auth_user');
       }
     }
+    setIsLoading(false);
   }, []);
 
   const login = async (userData) => {
@@ -119,7 +122,7 @@ export function AuthProvider({ children }) {
 
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <AuthContext.Provider value={{ user, isAuthenticated, login, logout, updateUser }}>
+      <AuthContext.Provider value={{ user, isAuthenticated, isLoading, login, logout, updateUser }}>
         {children}
       </AuthContext.Provider>
     </GoogleOAuthProvider>

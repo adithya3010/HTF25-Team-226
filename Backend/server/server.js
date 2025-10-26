@@ -59,7 +59,13 @@ const rooms = new Map(); // roomId -> { name, createdBy }
 // Optional MongoDB persistence if configured
 const useMongo = !!process.env.MONGODB_URI;
 if (useMongo) {
-    mongoose.connect(process.env.MONGODB_URI)
+    mongoose.connect(process.env.MONGODB_URI, {
+        ssl: true,
+        tls: true,
+        tlsAllowInvalidCertificates: false,
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+    })
         .then(() => console.log('✅ MongoDB connected'))
         .catch((err) => console.error('❌ MongoDB error:', err));
 }
@@ -161,8 +167,9 @@ function broadcastUsers(roomId) {
             username: u.username,
             isMuted: !!u.isMuted,
             isModerator: !!u.isModerator,
-            isOnline: true, // Connected users are always online
-            color: u.color // Include user color for avatar
+            isOnline: u.isOnline !== false, // Consider users online unless explicitly set to false
+            color: u.color,
+            lastSeen: u.lastSeen // Include last seen timestamp for offline users
         }));
     io.to(roomId).emit('users', roomUsers);
 }
@@ -171,57 +178,98 @@ io.on('connection', async (socket) => {
     const username = socket.handshake.query?.username || `User-${socket.id.slice(0,6)}`;
     const roomId = socket.handshake.query?.roomId;
     
-    // Assign color for avatar
-    const color = ['#4B5563', '#2F4F4F', '#6B7280', '#3B82F6'][Math.floor(Math.random()*4)];
-    users.set(socket.id, { username, isMuted: false, isModerator: false, color, roomId });
+    // Check if user already exists (could be offline) and update their status
+    const existingUserEntry = Array.from(users.entries()).find(([_, user]) => user.username === username);
+    const color = existingUserEntry 
+        ? existingUserEntry[1].color 
+        : ['#4B5563', '#2F4F4F', '#6B7280', '#3B82F6'][Math.floor(Math.random()*4)];
+    
+    if (existingUserEntry) {
+        // Update existing user with new socket id and online status
+        const [oldSocketId, existingUser] = existingUserEntry;
+        users.delete(oldSocketId);
+        users.set(socket.id, { 
+            ...existingUser,
+            roomId,
+            isOnline: true,
+            lastSeen: new Date().toISOString()
+        });
+    } else {
+        // Create new user
+        users.set(socket.id, { 
+            username, 
+            isMuted: false, 
+            isModerator: false, 
+            color, 
+            roomId,
+            isOnline: true,
+            lastSeen: new Date().toISOString()
+        });
+    }
 
     // Join the room if specified
     if (roomId) {
         socket.join(roomId);
     }
 
-    // Send existing messages for the room (load from DB if available)
-    if (roomId) {
-        if (useMongo) {
-            try {
-                // Validate roomId is a valid ObjectId
-                if (!mongoose.Types.ObjectId.isValid(roomId)) {
-                    console.error('Invalid roomId:', roomId);
-                    socket.emit('message history', []);
-                    return;
-                }
+    // Send existing messages for the room
+    if (!roomId) {
+        socket.emit('message history', []);
+        return;
+    }
 
-                const docs = await MessageModel.find({ roomId: new mongoose.Types.ObjectId(roomId) })
-                    .sort({ timestamp: 1 })
-                    .limit(200);
-                const mapped = docs.map((d) => ({
-                    id: d._id.toString(),
-                    username: d.username,
-                    content: d.text,
-                    timestamp: d.timestamp,
-                    userColor: ['#4B5563', '#2F4F4F', '#6B7280', '#3B82F6'][Math.floor(Math.random()*4)],
-                    isPinned: d.isPinned || false,
-                    isDeleted: d.isDeleted || false,
-                    editedAt: d.editedAt || null,
-                    originalText: d.originalText || null,
-                    timestamp: d.timestamp,
-                    userColor: color,
-                    isPinned: !!d.isPinned,
-                }));
-                socket.emit('message history', mapped);
-                // also populate in-memory if not exists
-                if (!messages.has(roomId)) {
-                    messages.set(roomId, mapped);
-                }
-            } catch (e) {
-                console.error('Failed to load messages from DB', e);
-                socket.emit('message history', []);
-            }
-        } else {
-            const roomMessages = messages.get(roomId) || [];
-            socket.emit('message history', roomMessages);
+    // For non-MongoDB mode, use in-memory messages
+    if (!useMongo) {
+        socket.emit('message history', messages.get(roomId) || []);
+        return;
+    }
+
+    // Validate MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(roomId)) {
+        console.error('Invalid roomId:', roomId);
+        socket.emit('message history', []);
+        return;
+    }
+
+    try {
+        const docs = await MessageModel.find({ 
+            roomId: new mongoose.Types.ObjectId(roomId) 
+        })
+        .sort({ timestamp: 1 })
+        .limit(200)
+        .lean();
+
+        if (!docs || !Array.isArray(docs)) {
+            console.error('Invalid query result:', docs);
+            socket.emit('message history', []);
+            return;
         }
-    } else {
+
+        console.log(`Found ${docs.length} messages`);
+        
+        const messageHistory = docs
+            .filter(doc => doc && doc._id) // Filter out invalid documents
+            .map(doc => ({
+                id: doc._id.toString(),
+                username: doc.username || 'Anonymous',
+                content: doc.text || '',
+                timestamp: doc.timestamp || new Date(),
+                userColor: doc.userColor || '#4B5563',
+                isPinned: Boolean(doc.isPinned),
+                isDeleted: Boolean(doc.isDeleted),
+                editedAt: doc.editedAt || null,
+                originalText: doc.originalText || null
+            }));
+
+        // Send messages to client
+        socket.emit('message history', messageHistory);
+
+        // Update in-memory cache
+        if (!messages.has(roomId)) {
+            messages.set(roomId, messageHistory);
+        }
+    } catch (error) {
+        console.error('Failed to load messages:', error);
         socket.emit('message history', []);
     }
 
@@ -258,7 +306,7 @@ io.on('connection', async (socket) => {
                 if (!mongoose.Types.ObjectId.isValid(msg.roomId)) {
                     throw new Error('Invalid roomId');
                 }
-                await MessageModel.create({
+                const savedMessage = await MessageModel.create({
                     username: msg.username,
                     text: msg.content,
                     timestamp: msg.timestamp,
@@ -267,6 +315,8 @@ io.on('connection', async (socket) => {
                     isDeleted: false,
                     userColor: msg.userColor || '#4B5563'
                 });
+                // Update the message ID to use MongoDB's _id
+                msg.id = savedMessage._id.toString();
             } catch (e) {
                 console.error('Failed to persist message', e);
             }
@@ -293,7 +343,7 @@ io.on('connection', async (socket) => {
             if (useMongo) {
                 try {
                     await MessageModel.findOneAndUpdate(
-                        { _id: messageId },
+                        { _id: new mongoose.Types.ObjectId(messageId) },
                         { $set: { isDeleted: true } }
                     );
                 } catch (e) {
@@ -398,9 +448,14 @@ io.on('connection', async (socket) => {
         const u = users.get(socket.id);
         if (u) {
             const { username: leftName, roomId } = u;
-            users.delete(socket.id);
+            // Update user status to offline with last seen timestamp
+            u.isOnline = false;
+            u.lastSeen = new Date().toISOString();
             if (roomId) {
-                socket.to(roomId).emit('userLeft', leftName);
+                socket.to(roomId).emit('userLeft', {
+                    username: leftName,
+                    lastSeen: u.lastSeen
+                });
                 broadcastUsers(roomId);
             }
         }
