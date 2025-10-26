@@ -55,6 +55,8 @@ const io = new Server(server, {
 const messages = new Map(); // roomId -> [{ id, username, content, timestamp, userColor, isPinned }]
 const users = new Map(); // socketId -> { username, isMuted, isModerator, color, roomId }
 const rooms = new Map(); // roomId -> { name, createdBy }
+const privateMessages = new Map(); // chatId (user1:user2) -> [{ id, from, to, content, timestamp }]
+const userSockets = new Map(); // username -> socketId for direct messaging
 
 // Optional MongoDB persistence if configured
 const useMongo = !!process.env.MONGODB_URI;
@@ -199,6 +201,9 @@ function broadcastUsers(roomId) {
 io.on('connection', async (socket) => {
     const username = socket.handshake.query?.username || `User-${socket.id.slice(0,6)}`;
     const roomId = socket.handshake.query?.roomId;
+    
+    // Map username to socket for private messaging
+    userSockets.set(username, socket.id);
     
     // Check if user already exists (could be offline) and update their status
     const existingUserEntry = Array.from(users.entries()).find(([_, user]) => user.username === username);
@@ -466,10 +471,101 @@ io.on('connection', async (socket) => {
         }
     });
 
+    // Private messaging handlers
+    socket.on('privateMessage', async ({ to, content }) => {
+        const from = users.get(socket.id)?.username;
+        if (!from) return;
+
+        const msg = {
+            id: makeId(),
+            from,
+            to,
+            content,
+            timestamp: new Date().toISOString()
+        };
+
+        // Create a normalized chat ID (alphabetically sorted to ensure consistency)
+        const chatId = [from, to].sort().join(':');
+        
+        // Get or create message array
+        if (!privateMessages.has(chatId)) {
+            privateMessages.set(chatId, []);
+        }
+        
+        privateMessages.get(chatId).push(msg);
+
+        // Save to MongoDB if available
+        if (useMongo && isMongoConnected) {
+            try {
+                await MessageModel.create({
+                    messageId: msg.id,
+                    username: from,
+                    toUsername: to,
+                    text: content,
+                    type: 'private',
+                    timestamp: msg.timestamp
+                });
+            } catch (e) {
+                console.error('Failed to save private message to DB:', e);
+            }
+        }
+
+        // Send to recipient if online (only once)
+        const recipientSocketId = userSockets.get(to);
+        if (recipientSocketId) {
+            io.to(recipientSocketId).emit('privateMessage', msg);
+        }
+
+        // Send confirmation back to sender (only once)
+        socket.emit('privateMessage', msg);
+    });
+
+    socket.on('getPrivateMessages', async ({ withUser }) => {
+        const user = users.get(socket.id)?.username;
+        if (!user) return;
+
+        // Create normalized chat ID (alphabetically sorted)
+        const chatId = [user, withUser].sort().join(':');
+        let history = privateMessages.get(chatId) || [];
+
+        // Try to load from MongoDB if no messages in memory
+        if (useMongo && isMongoConnected && history.length === 0) {
+            try {
+                const docs = await MessageModel.find({
+                    $or: [
+                        { username: user, toUsername: withUser, type: 'private' },
+                        { username: withUser, toUsername: user, type: 'private' }
+                    ]
+                }).sort({ timestamp: 1 }).lean();
+
+                history = docs.map(d => ({
+                    id: d.messageId,
+                    from: d.username,
+                    to: d.toUsername,
+                    content: d.text,
+                    timestamp: d.timestamp
+                }));
+
+                // Cache in memory with normalized ID
+                privateMessages.set(chatId, history);
+            } catch (e) {
+                console.error('Failed to load private messages from DB:', e);
+            }
+        }
+
+        socket.emit('privateMessageHistory', { withUser, messages: history });
+    });
+
     socket.on('disconnect', () => {
         const u = users.get(socket.id);
         if (u) {
             const { username: leftName, roomId } = u;
+            
+            // Clean up socket mapping
+            if (userSockets.get(leftName) === socket.id) {
+                userSockets.delete(leftName);
+            }
+            
             // Update user status to offline with last seen timestamp
             u.isOnline = false;
             u.lastSeen = new Date().toISOString();

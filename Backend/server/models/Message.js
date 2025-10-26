@@ -11,7 +11,7 @@ const messageSchema = new mongoose.Schema({
     roomId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Room',
-        required: true
+        required: false  // Not required for private messages
     },
     timestamp: {
         type: Date,
@@ -33,6 +33,16 @@ const messageSchema = new mongoose.Schema({
     userColor: {
         type: String,
         default: '#4B5563'
+    },
+    // Private message fields
+    type: {
+        type: String,
+        enum: ['room', 'private'],
+        default: 'room'
+    },
+    toUsername: {
+        type: String,
+        required: false  // Only required for private messages
     }
 });
 
