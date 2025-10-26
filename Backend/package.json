@@ -11,7 +11,8 @@
     "express": "^4.21.2",
     "mongoose": "^8.19.2",
     "multer": "^2.0.2",
-    "pdf-parse": "^2.4.5",
+    "openai": "^6.7.0",
+    "pdf-parse": "^1.1.1",
     "socket.io": "^4.8.1"
   }
 }

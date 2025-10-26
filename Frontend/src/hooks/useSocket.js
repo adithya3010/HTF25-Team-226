@@ -76,10 +76,8 @@ export function useSocket(username, roomId) {
     });
 
     newSocket.on('messageDeleted', (messageId) => {
-      setMessages((prev) => prev.map(m => 
-        m.id === messageId ? { ...m, isDeleted: true } : m
-      ));
-      toast.info('A message was deleted by a moderator', {
+      setMessages((prev) => prev.filter(m => m.id !== messageId));
+      toast.info('A message was deleted', {
         style: { 
           background: '#000000',
           color: '#ffffff'
@@ -158,11 +156,75 @@ export function useSocket(username, roomId) {
       });
     });
 
+    newSocket.on('userBlocked', (blockedUsername) => {
+      toast.warning(`${blockedUsername} was blocked`, {
+        style: { 
+          background: '#000000',
+          color: '#ffffff'
+        }
+      });
+      setUsers(prev => prev.filter(u => u.username !== blockedUsername));
+    });
+
+    newSocket.on('userUnblocked', (unblockedUsername) => {
+      toast.success(`${unblockedUsername} was unblocked`, {
+        style: { 
+          background: '#000000',
+          color: '#ffffff'
+        }
+      });
+    });
+
+    newSocket.on('blocked', ({ message }) => {
+      toast.error(message, {
+        style: { 
+          background: '#000000',
+          color: '#ffffff'
+        }
+      });
+      // User has been blocked, disconnect
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 2000);
+    });
+
     // Typing events
     newSocket.on('userTyping', (typingUsername) => {
       setTypingUsers((prev) =>
         prev.includes(typingUsername) ? prev : [...prev, typingUsername]
       );
+    });
+
+    // PDF summarization events
+    newSocket.on('pdfSummarized', ({ pdfId, summary, filename }) => {
+      // Create a system message with the summary
+      const msg = {
+        id: Date.now().toString(),
+        username: 'System',
+        content: `📄 Summary of "${filename}":\n\n${summary}`,
+        timestamp: new Date().toISOString(),
+        userColor: '#4A5568', // Gray color for system messages
+        isPinned: false,
+        isSystem: true
+      };
+
+      setMessages(prev => [...prev, msg]);
+      toast.success('PDF summary ready!', {
+        style: { 
+          background: '#000000',
+          color: '#ffffff'
+        }
+      });
+    });
+
+    // Handle PDF summarization errors
+    newSocket.on('pdfSummarizationError', ({ message, pdfId }) => {
+      toast.error(`Failed to summarize PDF: ${message}`, {
+        style: { 
+          background: '#000000',
+          color: '#ffffff'
+        }
+      });
     });
 
     newSocket.on('userStoppedTyping', (typingUsername) => {
@@ -216,6 +278,18 @@ export function useSocket(username, roomId) {
     }
   };
 
+  const blockUser = (userToBlock) => {
+    if (socket) {
+      socket.emit('blockUser', userToBlock);
+    }
+  };
+
+  const unblockUser = (userToUnblock) => {
+    if (socket) {
+      socket.emit('unblockUser', userToUnblock);
+    }
+  };
+
   // Typing actions
   const emitTyping = () => {
     if (socket) {
@@ -241,6 +315,8 @@ export function useSocket(username, roomId) {
     editMessage,
     muteUser,
     unmuteUser,
+    blockUser,
+    unblockUser,
     emitTyping,
     emitStopTyping
   };

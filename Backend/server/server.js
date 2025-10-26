@@ -11,6 +11,8 @@ const PdfModel = require('./models/Pdf');
 const VideoModel = require('./models/Video');
 const RoomModel = require('./models/Room');
 const multer = require('multer');
+// Import pdf-parse - it exports a function directly
+const pdfParse = require('pdf-parse');
 
 // Accept file uploads in memory (we'll store buffers in MongoDB)
 const upload = multer({ 
@@ -56,48 +58,62 @@ const messages = new Map(); // roomId -> [{ id, username, content, timestamp, us
 const users = new Map(); // socketId -> { username, isMuted, isModerator, color, roomId }
 const rooms = new Map(); // roomId -> { name, createdBy }
 
-// Optional MongoDB persistence if configured
-const useMongo = !!process.env.MONGODB_URI;
-if (useMongo) {
-    mongoose.connect(process.env.MONGODB_URI)
-        .then(() => console.log('✅ MongoDB connected'))
-        .catch((err) => console.error('❌ MongoDB error:', err));
+// Check for required API keys
+if (!process.env.GROQ_API_KEY) {
+    console.error('❌ GROQ_API_KEY is required for PDF summarization');
 }
 
-if (useMongo) {
-    mongoose.set('bufferCommands', false); // Disable buffering
-    mongoose.connection.on('connected', () => {
-        console.log('✅ MongoDB connected');
-        console.log('💡 TIP: If you cannot connect, make sure to whitelist your IP address in MongoDB Atlas:');
-        console.log('1. Go to https://cloud.mongodb.com');
-        console.log('2. Click on Network Access');
-        console.log('3. Click Add IP Address');
-        console.log('4. Add your current IP or select Allow Access from Anywhere');
-        isMongoConnected = true;
-    });
-    mongoose.connection.on('error', (err) => {
-        console.error('❌ MongoDB connection error:', err);
-        isMongoConnected = false;
-    });
-    mongoose.connection.on('disconnected', () => {
-        console.warn('⚠️ MongoDB disconnected');
-        isMongoConnected = false;
-    });
+// Initialize MongoDB connection state
+let isMongoConnected = false;
+const useMongo = !!process.env.MONGODB_URI;
 
-    // Connect to MongoDB
-    mongoose.connect(process.env.MONGODB_URI, {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
-        serverSelectionTimeoutMS: 30000, // Increased timeout to 30 seconds
-        heartbeatFrequencyMS: 2000,      // Check server status more frequently
-        socketTimeoutMS: 45000,          // Close sockets after 45 seconds of inactivity
-        family: 4,                       // Use IPv4, skip IPv6
-    }).catch((err) => {
+// MongoDB connection setup
+async function initializeMongoDB() {
+    if (!useMongo) {
+        console.log('MongoDB not configured (MONGODB_URI missing) — running with in-memory message store');
+        return false;
+    }
+
+    try {
+        mongoose.set('bufferCommands', false); // Disable buffering
+
+        // Set up connection listeners
+        mongoose.connection.on('connected', () => {
+            console.log('✅ MongoDB connected');
+            console.log('💡 TIP: If you cannot connect, make sure to whitelist your IP address in MongoDB Atlas:');
+            console.log('1. Go to https://cloud.mongodb.com');
+            console.log('2. Click on Network Access');
+            console.log('3. Click Add IP Address');
+            console.log('4. Add your current IP or select Allow Access from Anywhere');
+            isMongoConnected = true;
+        });
+
+        mongoose.connection.on('error', (err) => {
+            console.error('❌ MongoDB connection error:', err);
+            isMongoConnected = false;
+        });
+
+        mongoose.connection.on('disconnected', () => {
+            console.warn('⚠️ MongoDB disconnected');
+            isMongoConnected = false;
+        });
+
+        // Connect to MongoDB
+        await mongoose.connect(process.env.MONGODB_URI, {
+            useNewUrlParser: true,
+            useUnifiedTopology: true,
+            serverSelectionTimeoutMS: 30000,
+            heartbeatFrequencyMS: 2000,
+            socketTimeoutMS: 45000,
+            family: 4
+        });
+
+        return true;
+    } catch (err) {
         console.error('❌ MongoDB initial connection error:', err);
         console.log('💡 Note: The chat will work in memory-only mode until MongoDB connection is established');
-    });
-} else {
-    console.log('MongoDB not configured (MONGODB_URI missing) — running with in-memory message store');
+        return false;
+    }
 }
 
 // Serve public folder for simple client if present
@@ -189,6 +205,7 @@ function broadcastUsers(roomId) {
             username: u.username,
             isMuted: !!u.isMuted,
             isModerator: !!u.isModerator,
+            isBlocked: !!u.isBlocked,
             isOnline: u.isOnline !== false, // Consider users online unless explicitly set to false
             color: u.color,
             lastSeen: u.lastSeen // Include last seen timestamp for offline users
@@ -199,6 +216,22 @@ function broadcastUsers(roomId) {
 io.on('connection', async (socket) => {
     const username = socket.handshake.query?.username || `User-${socket.id.slice(0,6)}`;
     const roomId = socket.handshake.query?.roomId;
+    
+    // Check if user is the room creator (moderator)
+    let isModerator = false;
+    if (roomId) {
+        if (useMongo && mongoose.Types.ObjectId.isValid(roomId)) {
+            try {
+                const room = await RoomModel.findById(roomId).lean();
+                isModerator = room && room.createdBy === username;
+            } catch (e) {
+                console.error('Failed to check room creator:', e);
+            }
+        } else {
+            const room = rooms.get(roomId);
+            isModerator = room && room.createdBy === username;
+        }
+    }
     
     // Check if user already exists (could be offline) and update their status
     const existingUserEntry = Array.from(users.entries()).find(([_, user]) => user.username === username);
@@ -213,6 +246,7 @@ io.on('connection', async (socket) => {
         users.set(socket.id, { 
             ...existingUser,
             roomId,
+            isModerator: isModerator || existingUser.isModerator, // Preserve moderator status
             isOnline: true,
             lastSeen: new Date().toISOString()
         });
@@ -221,7 +255,8 @@ io.on('connection', async (socket) => {
         users.set(socket.id, { 
             username, 
             isMuted: false, 
-            isModerator: false, 
+            isModerator: isModerator, 
+            isBlocked: false,
             color, 
             roomId,
             isOnline: true,
@@ -231,12 +266,19 @@ io.on('connection', async (socket) => {
 
     // Join the room if specified
     if (roomId) {
+        const currentUser = users.get(socket.id);
+        // Check if user is blocked
+        if (currentUser?.isBlocked) {
+            socket.emit('blocked', { message: 'You are blocked from this room' });
+            socket.disconnect(true);
+            return;
+        }
         socket.join(roomId);
     }
 
     // Send existing messages for the room (load from DB if available)
     if (roomId) {
-        if (useMongo) {
+        if (useMongo && isMongoConnected) {
             try {
                 // Validate roomId is a valid ObjectId
                 if (!mongoose.Types.ObjectId.isValid(roomId)) {
@@ -245,33 +287,37 @@ io.on('connection', async (socket) => {
                     return;
                 }
 
-                const docs = await MessageModel.find({ roomId: new mongoose.Types.ObjectId(roomId) })
-                    .sort({ timestamp: 1 })
-                    .limit(200);
+                // Wait for messages to be retrieved
+                const docs = await MessageModel.find({ 
+                    roomId: new mongoose.Types.ObjectId(roomId) 
+                })
+                .sort({ timestamp: 1 })
+                .limit(200)
+                .exec();
+
                 const mapped = docs.map((d) => ({
                     id: d._id.toString(),
                     username: d.username,
                     content: d.text,
                     timestamp: d.timestamp,
-                    userColor: ['#4B5563', '#2F4F4F', '#6B7280', '#3B82F6'][Math.floor(Math.random()*4)],
-                    isPinned: d.isPinned || false,
-                    isDeleted: d.isDeleted || false,
-                    editedAt: d.editedAt || null,
-                    originalText: d.originalText || null,
-                    timestamp: d.timestamp,
                     userColor: color,
                     isPinned: !!d.isPinned,
+                    isDeleted: !!d.isDeleted,
+                    editedAt: d.editedAt || null,
+                    originalText: d.originalText || null
                 }));
+
+                // Update in-memory cache
+                messages.set(roomId, mapped);
                 socket.emit('message history', mapped);
-                // also populate in-memory if not exists
-                if (!messages.has(roomId)) {
-                    messages.set(roomId, mapped);
-                }
             } catch (e) {
-                console.error('Failed to load messages from DB', e);
-                socket.emit('message history', []);
+                console.error('Failed to load messages from DB:', e);
+                // Fallback to in-memory messages if DB query fails
+                const fallbackMessages = messages.get(roomId) || [];
+                socket.emit('message history', fallbackMessages);
             }
         } else {
+            // Use in-memory messages if MongoDB is not connected
             const roomMessages = messages.get(roomId) || [];
             socket.emit('message history', roomMessages);
         }
@@ -289,6 +335,12 @@ io.on('connection', async (socket) => {
     socket.on('message', async (content) => {
         const user = users.get(socket.id) || { username };
         if (!user.roomId) return; // Must be in a room to send messages
+
+        // Check if user is blocked
+        if (user.isBlocked) {
+            socket.emit('error', 'You are blocked and cannot send messages');
+            return;
+        }
 
         const msg = {
             id: makeId(),
@@ -312,7 +364,8 @@ io.on('connection', async (socket) => {
                 if (!mongoose.Types.ObjectId.isValid(msg.roomId)) {
                     throw new Error('Invalid roomId');
                 }
-                await MessageModel.create({
+                const savedMessage = await MessageModel.create({
+                    _id: new mongoose.Types.ObjectId(),
                     username: msg.username,
                     text: msg.content,
                     timestamp: msg.timestamp,
@@ -342,19 +395,22 @@ io.on('connection', async (socket) => {
         const idx = roomMessages.findIndex((m) => m.id === messageId);
         if (idx !== -1) {
             const msg = roomMessages[idx];
-            msg.isDeleted = true;
-            io.to(user.roomId).emit('messageDeleted', messageId);
+            // Allow deletion if user is moderator or message owner
+            if (user.isModerator || msg.username === user.username) {
+                // Remove from in-memory storage completely
+                roomMessages.splice(idx, 1);
+                io.to(user.roomId).emit('messageDeleted', messageId);
 
-            // Update in MongoDB if available
-            if (useMongo) {
-                try {
-                    await MessageModel.findOneAndUpdate(
-                        { _id: new mongoose.Types.ObjectId(messageId) },
-                        { $set: { isDeleted: true } }
-                    );
-                } catch (e) {
-                    console.error('Failed to update message deleted state:', e);
+                // Delete from MongoDB if available
+                if (useMongo && isMongoConnected) {
+                    try {
+                        await MessageModel.findByIdAndDelete(messageId);
+                    } catch (e) {
+                        console.error('Failed to delete message from database:', e);
+                    }
                 }
+            } else {
+                socket.emit('error', 'You do not have permission to delete this message');
             }
         }
     });
@@ -381,10 +437,10 @@ io.on('connection', async (socket) => {
             });
 
             // Update in MongoDB if available
-            if (useMongo) {
+            if (useMongo && isMongoConnected) {
                 try {
-                    await MessageModel.findOneAndUpdate(
-                        { _id: messageId },
+                    await MessageModel.findByIdAndUpdate(
+                        messageId,
                         { 
                             $set: { 
                                 text: newText,
@@ -400,9 +456,15 @@ io.on('connection', async (socket) => {
         }
     });
 
-    socket.on('pinMessage', (messageId) => {
+    socket.on('pinMessage', async (messageId) => {
         const user = users.get(socket.id);
         if (!user?.roomId) return;
+
+        // Check if user is moderator
+        if (!user.isModerator) {
+            socket.emit('error', 'Only moderators can pin messages');
+            return;
+        }
 
         const roomMessages = messages.get(user.roomId);
         if (!roomMessages) return;
@@ -410,30 +472,103 @@ io.on('connection', async (socket) => {
         const msg = roomMessages.find((m) => m.id === messageId);
         if (msg) {
             msg.isPinned = !msg.isPinned;
-            io.to(user.roomId).emit('messagePinned', messageId);
+            io.to(user.roomId).emit('messagePinned', { messageId, isPinned: msg.isPinned });
+
+            // Update in MongoDB if available
+            if (useMongo && isMongoConnected) {
+                try {
+                    await MessageModel.findByIdAndUpdate(
+                        messageId,
+                        { $set: { isPinned: msg.isPinned } }
+                    );
+                } catch (e) {
+                    console.error('Failed to update message pin state:', e);
+                }
+            }
         }
     });
 
     socket.on('muteUser', (targetUsername) => {
+        const user = users.get(socket.id);
+        if (!user?.isModerator) {
+            socket.emit('error', 'Only moderators can mute users');
+            return;
+        }
+
         for (const [id, u] of users.entries()) {
-            if (u.username === targetUsername) {
+            if (u.username === targetUsername && u.roomId === user.roomId) {
                 u.isMuted = true;
-                io.emit('userMuted', targetUsername);
+                io.to(user.roomId).emit('userMuted', targetUsername);
                 break;
             }
         }
-        broadcastUsers();
+        if (user.roomId) {
+            broadcastUsers(user.roomId);
+        }
     });
 
     socket.on('unmuteUser', (targetUsername) => {
+        const user = users.get(socket.id);
+        if (!user?.isModerator) {
+            socket.emit('error', 'Only moderators can unmute users');
+            return;
+        }
+
         for (const [id, u] of users.entries()) {
-            if (u.username === targetUsername) {
+            if (u.username === targetUsername && u.roomId === user.roomId) {
                 u.isMuted = false;
-                io.emit('userUnmuted', targetUsername);
+                io.to(user.roomId).emit('userUnmuted', targetUsername);
                 break;
             }
         }
-        broadcastUsers();
+        if (user.roomId) {
+            broadcastUsers(user.roomId);
+        }
+    });
+
+    socket.on('blockUser', (targetUsername) => {
+        const user = users.get(socket.id);
+        if (!user?.isModerator) {
+            socket.emit('error', 'Only moderators can block users');
+            return;
+        }
+
+        // Find and disconnect the blocked user
+        for (const [socketId, u] of users.entries()) {
+            if (u.username === targetUsername && u.roomId === user.roomId) {
+                u.isBlocked = true;
+                // Disconnect the blocked user
+                const targetSocket = io.sockets.sockets.get(socketId);
+                if (targetSocket) {
+                    targetSocket.emit('blocked', { message: 'You have been blocked by the moderator' });
+                    targetSocket.disconnect(true);
+                }
+                io.to(user.roomId).emit('userBlocked', targetUsername);
+                break;
+            }
+        }
+        if (user.roomId) {
+            broadcastUsers(user.roomId);
+        }
+    });
+
+    socket.on('unblockUser', (targetUsername) => {
+        const user = users.get(socket.id);
+        if (!user?.isModerator) {
+            socket.emit('error', 'Only moderators can unblock users');
+            return;
+        }
+
+        for (const [id, u] of users.entries()) {
+            if (u.username === targetUsername) {
+                u.isBlocked = false;
+                io.to(user.roomId).emit('userUnblocked', targetUsername);
+                break;
+            }
+        }
+        if (user.roomId) {
+            broadcastUsers(user.roomId);
+        }
     });
 
     socket.on('typing', () => {
@@ -447,6 +582,42 @@ io.on('connection', async (socket) => {
         const u = users.get(socket.id);
         if (u && u.roomId) {
             socket.to(u.roomId).emit('userStoppedTyping', u.username);
+        }
+    });
+
+    socket.on('summarizePdf', async ({ pdfId, roomId }) => {
+        try {
+            if (!pdfId) {
+                throw new Error('PDF ID is required');
+            }
+
+            if (!mongoose.Types.ObjectId.isValid(pdfId)) {
+                throw new Error('Invalid PDF ID format');
+            }
+
+            // Call the summarization endpoint
+            const response = await fetch(`http://localhost:3001/api/pdf/${pdfId}/summarize?roomId=${roomId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Summarization failed');
+            }
+            
+            // The response is handled by the summarization endpoint
+            // which emits the pdfSummarized event directly
+        } catch (error) {
+            console.error('Error summarizing PDF:', error);
+            socket.emit('error', error.message);
+            // Send an error toast to the client
+            io.to(roomId).emit('pdfSummarizationError', {
+                message: error.message,
+                pdfId: pdfId
+            });
         }
     });
 
@@ -532,8 +703,6 @@ app.get('/api/video/:id', async (req, res) => {
     }
 });
 
-const pdfParse = require('pdf-parse');
-
 // Upload PDF endpoint - stores PDF as binary Buffer in MongoDB with metadata
 app.post('/api/upload/pdf', upload.single('file'), async (req, res) => {
     try {
@@ -543,7 +712,8 @@ app.post('/api/upload/pdf', upload.single('file'), async (req, res) => {
         // Extract PDF metadata
         let pdfData;
         try {
-            pdfData = await pdfParse(buffer);
+            const pdfBuffer = buffer instanceof Buffer ? buffer : Buffer.from(buffer);
+            pdfData = await pdfParse(pdfBuffer);
         } catch (parseErr) {
             console.error('PDF parse error:', parseErr);
             pdfData = { numpages: 0, info: {} };
@@ -593,8 +763,117 @@ app.get('/api/pdf/:id', async (req, res) => {
     }
 });
 
+const OpenAI = require("openai");
+
+// Initialize Groq AI
+const groq = new OpenAI({
+    apiKey: process.env.GROQ_API_KEY,
+    baseURL: "https://api.groq.com/openai/v1"
+});
+
+// Summarize PDF endpoint
+app.post('/api/pdf/:id/summarize', async (req, res) => {
+    try {
+        if (!req.params.id || !mongoose.Types.ObjectId.isValid(req.params.id)) {
+            console.error('Invalid PDF ID:', req.params.id);
+            return res.status(400).json({ error: 'Invalid PDF ID' });
+        }
+
+        const doc = await PdfModel.findById(req.params.id);
+        if (!doc) {
+            console.error('PDF not found:', req.params.id);
+            return res.status(404).json({ error: 'PDF not found' });
+        }
+
+        // Update status to pending
+        doc.summary = {
+            status: 'pending',
+            generatedAt: new Date()
+        };
+        await doc.save();
+
+        // Extract text from PDF
+        const buffer = doc.data.buffer ? Buffer.from(doc.data.buffer) : doc.data;
+        const pdfData = await pdfParse(buffer);
+        const text = pdfData.text;
+
+        try {
+            // Initialize the model - using Groq's llama model (free and fast)
+            const chatCompletion = await groq.chat.completions.create({
+                messages: [
+                    {
+                        role: "system",
+                        content: "You are a helpful assistant that creates clear and concise summaries of academic texts. Focus on the main points and key findings."
+                    },
+                    {
+                        role: "user",
+                        content: `Please provide a clear and concise summary (1-3 paragraphs) of the following text:\n\n${text.substring(0, 30000)}`
+                    }
+                ],
+                model: "llama-3.3-70b-versatile", // Free and fast Groq model
+                temperature: 0.5,
+                max_tokens: 1024
+            });
+
+            const summary = chatCompletion.choices[0]?.message?.content || 'Unable to generate summary';
+
+            // Update PDF document with summary
+            doc.summary = {
+                text: summary,
+                status: 'completed',
+                generatedAt: new Date()
+            };
+            await doc.save();
+
+            // Emit socket event with summary
+            io.to(req.query.roomId).emit('pdfSummarized', {
+                pdfId: doc._id,
+                summary: doc.summary.text,
+                filename: doc.filename
+            });
+
+            return res.json({
+                status: 'completed',
+                summary: doc.summary.text
+            });
+
+        } catch (error) {
+            console.error('Summary generation error:', error);
+            doc.summary.status = 'failed';
+            await doc.save();
+
+            // Provide more specific error messages
+            let errorMessage = 'Failed to generate summary';
+            if (error.message.includes('404') || error.message.includes('not found')) {
+                errorMessage = 'AI model not available. Please check your API key and try again.';
+            } else if (error.message.includes('quota') || error.message.includes('rate limit')) {
+                errorMessage = 'AI service quota exceeded. Please try again later.';
+            } else if (error.message.includes('invalid_api_key') || error.message.includes('authentication')) {
+                errorMessage = 'Invalid Groq API key. Please check your API key and try again.';
+            }
+
+            return res.status(500).json({ error: errorMessage });
+        }
+
+    } catch (err) {
+        console.error('PDF summarization error:', err);
+        return res.status(500).json({ error: 'Summarization failed' });
+    }
+});
+
 // Start server on port 3001 to match frontend
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-    console.log(`🚀 Socket server running at http://localhost:${PORT}`);
+
+// Initialize MongoDB and start server
+async function startServer() {
+    await initializeMongoDB();
+    
+    server.listen(PORT, () => {
+        console.log(`🚀 Socket server running at http://localhost:${PORT}`);
+    });
+}
+
+startServer().catch(err => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
 });
