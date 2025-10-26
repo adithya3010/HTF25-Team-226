@@ -27,6 +27,7 @@ export default function ChatApp() {
     users,
     typingUsers,
     isConnected,
+    socket,
     sendMessage,
     emitTyping,
     emitStopTyping,
@@ -217,6 +218,7 @@ export default function ChatApp() {
                   onUnmuteUser={unmuteUser}
                   onClose={() => setIsSidebarOpen(false)}
                   isMobile={true}
+                  socket={socket}
                 />
               </SheetContent>
             </Sheet>
@@ -252,6 +254,7 @@ export default function ChatApp() {
                 isModerator={isModerator}
                 onMuteUser={muteUser}
                 onUnmuteUser={unmuteUser}
+                socket={socket}
               />
             </div>
           )}

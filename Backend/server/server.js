@@ -247,21 +247,38 @@ io.on('connection', async (socket) => {
 
                 const docs = await MessageModel.find({ roomId: new mongoose.Types.ObjectId(roomId) })
                     .sort({ timestamp: 1 })
+                    .lean() // Convert to plain JavaScript objects
                     .limit(200);
-                const mapped = docs.map((d) => ({
-                    id: d._id.toString(),
-                    username: d.username,
-                    content: d.text,
-                    timestamp: d.timestamp,
-                    userColor: ['#4B5563', '#2F4F4F', '#6B7280', '#3B82F6'][Math.floor(Math.random()*4)],
-                    isPinned: d.isPinned || false,
-                    isDeleted: d.isDeleted || false,
-                    editedAt: d.editedAt || null,
-                    originalText: d.originalText || null,
-                    timestamp: d.timestamp,
-                    userColor: color,
-                    isPinned: !!d.isPinned,
-                }));
+                
+                console.log('Raw messages from DB:', docs);  // Debug log
+                
+                const mapped = docs.map((d) => {
+                    // Get message ID, with fallbacks
+                    let messageId;
+                    try {
+                        messageId = d.messageId || (d._id && d._id.toString()) || d.id;
+                        if (!messageId) {
+                            console.error('Message missing ID:', d);
+                            messageId = new mongoose.Types.ObjectId().toString(); // Generate new ID as last resort
+                        }
+                    } catch (err) {
+                        console.error('Error getting message ID:', err);
+                        messageId = new mongoose.Types.ObjectId().toString();
+                    }
+
+                    const userColor = ['#4B5563', '#2F4F4F', '#6B7280', '#3B82F6'][Math.floor(Math.random()*4)];
+                    return {
+                        id: messageId,
+                        username: d.username || 'Unknown User',
+                        content: d.text || '',
+                        timestamp: d.timestamp || new Date(),
+                        userColor: userColor,
+                        isPinned: Boolean(d.isPinned),
+                        isDeleted: Boolean(d.isDeleted),
+                        editedAt: d.editedAt || null,
+                        originalText: d.originalText || null
+                    };
+                });
                 socket.emit('message history', mapped);
                 // also populate in-memory if not exists
                 if (!messages.has(roomId)) {
@@ -312,7 +329,8 @@ io.on('connection', async (socket) => {
                 if (!mongoose.Types.ObjectId.isValid(msg.roomId)) {
                     throw new Error('Invalid roomId');
                 }
-                await MessageModel.create({
+                const savedMessage = await MessageModel.create({
+                    messageId: msg.id,
                     username: msg.username,
                     text: msg.content,
                     timestamp: msg.timestamp,
@@ -321,8 +339,6 @@ io.on('connection', async (socket) => {
                     isDeleted: false,
                     userColor: msg.userColor || '#4B5563'
                 });
-                // Update the message ID to use MongoDB's _id
-                msg.id = savedMessage._id.toString();
             } catch (e) {
                 console.error('Failed to persist message', e);
             }
@@ -349,7 +365,7 @@ io.on('connection', async (socket) => {
             if (useMongo) {
                 try {
                     await MessageModel.findOneAndUpdate(
-                        { _id: new mongoose.Types.ObjectId(messageId) },
+                        { messageId: messageId },
                         { $set: { isDeleted: true } }
                     );
                 } catch (e) {
@@ -384,7 +400,7 @@ io.on('connection', async (socket) => {
             if (useMongo) {
                 try {
                     await MessageModel.findOneAndUpdate(
-                        { _id: messageId },
+                        { messageId },
                         { 
                             $set: { 
                                 text: newText,

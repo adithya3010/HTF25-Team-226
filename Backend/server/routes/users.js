@@ -2,6 +2,10 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const User = require('../models/User');
+const Message = require('../models/Message');
+const Room = require('../models/Room');
+const Pdf = require('../models/Pdf');
+const Video = require('../models/Video');
 
 // Update user profile
 router.patch('/:userId', async (req, res) => {
@@ -57,11 +61,56 @@ router.patch('/:userId', async (req, res) => {
       if (existingUser) {
         return res.status(400).json({ error: 'Username already taken' });
       }
+
+      // Store old username for updates across all collections
+      const oldUsername = user.username;
       user.username = username;
+
+      // Only update other collections if username actually changed
+      if (oldUsername && oldUsername !== username) {
+        // Update messages
+        await Message.updateMany(
+          { username: oldUsername },
+          { $set: { username: username } }
+        );
+        console.log(`Updated username in messages from ${oldUsername} to ${username}`);
+
+        // Update rooms where user is creator
+        await Room.updateMany(
+          { createdBy: oldUsername },
+          { $set: { createdBy: username } }
+        );
+
+        // Update room memberships
+        await Room.updateMany(
+          { members: oldUsername },
+          { $pull: { members: oldUsername } }
+        );
+        await Room.updateMany(
+          { members: { $ne: username } },
+          { $push: { members: username } }
+        );
+        console.log(`Updated username in rooms from ${oldUsername} to ${username}`);
+
+        // Update PDFs
+        await Pdf.updateMany(
+          { uploadedBy: oldUsername },
+          { $set: { uploadedBy: username } }
+        );
+        console.log(`Updated username in PDF uploads from ${oldUsername} to ${username}`);
+
+        // Update Videos
+        await Video.updateMany(
+          { uploadedBy: oldUsername },
+          { $set: { uploadedBy: username } }
+        );
+        console.log(`Updated username in video uploads from ${oldUsername} to ${username}`);
+      }
     }
     
     if (name) user.name = name;
 
+    // Save user changes
     await user.save();
     res.json({
       _id: user._id,
