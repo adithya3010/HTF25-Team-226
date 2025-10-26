@@ -89,6 +89,7 @@ export function AuthProvider({ children }) {
       }
 
       console.log('Updating user with ID:', userId);
+      console.log('Update payload:', updates);
       
       const response = await fetch(`http://localhost:3001/api/users/${userId}`, {
         method: 'PATCH',
@@ -99,7 +100,8 @@ export function AuthProvider({ children }) {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to update user');
+        const errorData = await response.json().catch(() => ({ error: 'Failed to update user' }));
+        throw new Error(errorData.error || 'Failed to update user');
       }
 
       const updatedUserData = await response.json();

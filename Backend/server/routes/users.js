@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const User = require('../models/User');
 
 // Update user profile
@@ -7,11 +8,46 @@ router.patch('/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
     const { username, name } = req.body;
+    
+    console.log('Update request:', { userId, username, name });
 
-    // Find user and update
-    const user = await User.findById(userId);
+    // Check if ID is valid MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      console.log('Invalid MongoDB ObjectId');
+      return res.status(400).json({ error: 'Invalid user ID format' });
+    }
+
+    // List all users for debugging
+    const allUsers = await User.find({});
+    console.log('All users in database:', allUsers.map(u => ({ 
+      _id: u._id.toString(),
+      username: u.username,
+      email: u.email,
+      googleId: u.googleId 
+    })));
+
+    console.log('Looking for user with ID:', userId);
+    // Try to find user by MongoDB ID first
+    let user = null;
+    if (mongoose.Types.ObjectId.isValid(userId)) {
+      user = await User.findById(userId);
+      console.log('Searched by MongoDB ID:', user);
+    }
+
+    // If not found and looks like a Google ID, try finding by googleId
+    if (!user && userId.length > 20) {
+      user = await User.findOne({ googleId: userId });
+      console.log('Searched by Google ID:', user);
+    }
+
+    // If still not found, try email search as last resort
+    if (!user && req.body.email) {
+      user = await User.findOne({ email: req.body.email });
+      console.log('Searched by email:', user);
+    }
     
     if (!user) {
+      console.log('User not found in database');
       return res.status(404).json({ error: 'User not found' });
     }
 
@@ -38,7 +74,7 @@ router.patch('/:userId', async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating user:', error);
-    res.status(500).json({ error: 'Failed to update user' });
+    res.status(500).json({ error: error.message || 'Error updating user' });
   }
 });
 
