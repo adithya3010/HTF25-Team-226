@@ -2,9 +2,18 @@ import { useGoogleLogin } from '@react-oauth/google';
 import { motion } from 'framer-motion';
 import { useAuth } from './AuthProvider';
 import { Button } from '../ui/button';
+import { useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
 
 export function SignIn() {
-  const { login } = useAuth();
+  const { login, isAuthenticated, isLoading } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      navigate('/');
+    }
+  }, [isLoading, isAuthenticated, navigate]);
 
   const handleGoogleLogin = useGoogleLogin({
     onSuccess: async (response) => {
@@ -24,7 +33,9 @@ export function SignIn() {
           accessToken: response.access_token,
         };
 
-        login(userData);
+        await login(userData);
+        // Redirect to home page after successful login
+        navigate('/');
       } catch (error) {
         console.error('Failed to get user info:', error);
       }
