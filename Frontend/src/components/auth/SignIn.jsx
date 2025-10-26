@@ -40,7 +40,7 @@ export function SignIn() {
         className="max-w-md w-full mx-4 p-8 rounded-xl bg-white/5 backdrop-blur-xl"
       >
         <h1 className="text-3xl font-bold text-center text-white mb-8">
-          Welcome to ChatRoom
+          Welcome to CORE
         </h1>
 
         <div className="space-y-4">

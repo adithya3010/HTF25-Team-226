@@ -2,13 +2,53 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 
+// Update user profile
+router.patch('/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { username, name } = req.body;
+
+    // Find user and update
+    const user = await User.findById(userId);
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Check username uniqueness if updating username
+    if (username) {
+      const existingUser = await User.findOne({ username, _id: { $ne: userId } });
+      if (existingUser) {
+        return res.status(400).json({ error: 'Username already taken' });
+      }
+      user.username = username;
+    }
+    
+    if (name) user.name = name;
+
+    await user.save();
+    res.json({
+      _id: user._id,
+      username: user.username,
+      name: user.name,
+      email: user.email,
+      picture: user.picture,
+      isModerator: user.isModerator,
+      roles: user.roles
+    });
+  } catch (error) {
+    console.error('Error updating user:', error);
+    res.status(500).json({ error: 'Failed to update user' });
+  }
+});
+
 // Handle user authentication and role management
 router.post('/auth', async (req, res) => {
   try {
     const { email, googleId, name, picture, username } = req.body;
 
-    // Find or create user
-    let user = await User.findOne({ googleId });
+    // Find or create user by googleId or email
+    let user = await User.findOne({ $or: [{ googleId }, { email }] });
     
     if (!user) {
       // For demo purposes, make the first user a moderator
@@ -24,6 +64,12 @@ router.post('/auth', async (req, res) => {
         roles: isFirstUser ? ['user', 'moderator'] : ['user']
       });
       await user.save();
+    } else {
+      // Update googleId if not set (in case user logged in with email first or something)
+      if (!user.googleId && googleId) {
+        user.googleId = googleId;
+        await user.save();
+      }
     }
 
     // Update last login
@@ -32,7 +78,7 @@ router.post('/auth', async (req, res) => {
 
     // Return user data with roles
     res.json({
-      id: user._id,
+      _id: user._id,
       googleId: user.googleId,
       email: user.email,
       name: user.name,

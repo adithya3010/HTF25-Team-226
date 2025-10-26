@@ -7,6 +7,7 @@ const AuthContext = createContext({
   isAuthenticated: false,
   login: () => {},
   logout: () => {},
+  updateUser: () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -49,12 +50,18 @@ export function AuthProvider({ children }) {
 
       const userWithRole = await response.json();
       
-      // Combine Google data with backend role data
+      if (!userWithRole._id) {
+        console.error('Server response missing _id:', userWithRole);
+        throw new Error('Invalid server response: missing _id');
+      }
+
+      // Combine backend data with additional Google data
       const enrichedUserData = {
-        ...userData,
-        isModerator: userWithRole.isModerator || false,
-        roles: userWithRole.roles || ['user'],
+        ...userWithRole, // Keep all the backend data (includes _id)
+        accessToken: userData.accessToken, // Add any additional Google data we want to keep
       };
+
+      console.log('Setting user data:', enrichedUserData);
 
       setUser(enrichedUserData);
       setIsAuthenticated(true);
@@ -72,9 +79,47 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('auth_user');
   };
 
+  const updateUser = async (updates) => {
+    try {
+      console.log('Current user:', user);
+      // Use either MongoDB _id or Google id
+      const userId = user?._id || user?.id;
+      if (!userId) {
+        throw new Error('User ID not found');
+      }
+
+      console.log('Updating user with ID:', userId);
+      
+      const response = await fetch(`http://localhost:3001/api/users/${userId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updates),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update user');
+      }
+
+      const updatedUserData = await response.json();
+      const enrichedUserData = {
+        ...user,
+        ...updatedUserData,
+      };
+
+      setUser(enrichedUserData);
+      localStorage.setItem('auth_user', JSON.stringify(enrichedUserData));
+      return enrichedUserData;
+    } catch (error) {
+      console.error('Failed to update user:', error);
+      throw error;
+    }
+  };
+
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <AuthContext.Provider value={{ user, isAuthenticated, login, logout }}>
+      <AuthContext.Provider value={{ user, isAuthenticated, login, logout, updateUser }}>
         {children}
       </AuthContext.Provider>
     </GoogleOAuthProvider>

@@ -12,6 +12,7 @@ import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
 import { Toaster } from "./ui/sonner";
 import { RoomList } from "./RoomList";
+import { useAuth } from "./auth/AuthProvider";
 
 export default function ChatApp() {
   const [username, setUsername] = useState(null);
@@ -33,6 +34,7 @@ export default function ChatApp() {
     pinMessage,
     muteUser,
     unmuteUser,
+    editMessage,
   } = useSocket(username, currentRoom?._id);
 
   const currentUser = users.find((u) => u.username === username);
@@ -232,6 +234,7 @@ export default function ChatApp() {
               isModerator={isModerator}
               onDeleteMessage={deleteMessage}
               onPinMessage={pinMessage}
+              onEditMessage={editMessage}
             />
             <MessageInput
               onSendMessage={sendMessage}

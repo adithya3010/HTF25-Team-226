@@ -25,7 +25,7 @@ const app = express();
 // Simple CORS for API endpoints (frontend runs on different port)
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     if (req.method === 'OPTIONS') {
         return res.sendStatus(200);
@@ -34,6 +34,14 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json());
+
+// Mount routes
+const usersRouter = require('./routes/users');
+app.use('/api/users', usersRouter);
+
+const roomsRouter = require('./routes/rooms');
+app.use('/api/rooms', roomsRouter);
+
 const server = http.createServer(app);
 
 // Use Socket.IO v4 Server
@@ -51,10 +59,7 @@ const rooms = new Map(); // roomId -> { name, createdBy }
 // Optional MongoDB persistence if configured
 const useMongo = !!process.env.MONGODB_URI;
 if (useMongo) {
-    mongoose.connect(process.env.MONGODB_URI, {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
-    })
+    mongoose.connect(process.env.MONGODB_URI)
         .then(() => console.log('✅ MongoDB connected'))
         .catch((err) => console.error('❌ MongoDB error:', err));
 }
@@ -194,6 +199,12 @@ io.on('connection', async (socket) => {
                     username: d.username,
                     content: d.text,
                     timestamp: d.timestamp,
+                    userColor: ['#4B5563', '#2F4F4F', '#6B7280', '#3B82F6'][Math.floor(Math.random()*4)],
+                    isPinned: d.isPinned || false,
+                    isDeleted: d.isDeleted || false,
+                    editedAt: d.editedAt || null,
+                    originalText: d.originalText || null,
+                    timestamp: d.timestamp,
                     userColor: color,
                     isPinned: !!d.isPinned,
                 }));
@@ -251,7 +262,10 @@ io.on('connection', async (socket) => {
                     username: msg.username,
                     text: msg.content,
                     timestamp: msg.timestamp,
-                    roomId: new mongoose.Types.ObjectId(msg.roomId)
+                    roomId: new mongoose.Types.ObjectId(msg.roomId),
+                    isPinned: msg.isPinned || false,
+                    isDeleted: false,
+                    userColor: msg.userColor || '#4B5563'
                 });
             } catch (e) {
                 console.error('Failed to persist message', e);
@@ -262,7 +276,7 @@ io.on('connection', async (socket) => {
         io.to(user.roomId).emit('message', msg);
     });
 
-    socket.on('deleteMessage', (messageId) => {
+    socket.on('deleteMessage', async (messageId) => {
         const user = users.get(socket.id);
         if (!user?.roomId) return;
 
@@ -271,8 +285,62 @@ io.on('connection', async (socket) => {
 
         const idx = roomMessages.findIndex((m) => m.id === messageId);
         if (idx !== -1) {
-            roomMessages.splice(idx, 1);
+            const msg = roomMessages[idx];
+            msg.isDeleted = true;
             io.to(user.roomId).emit('messageDeleted', messageId);
+
+            // Update in MongoDB if available
+            if (useMongo) {
+                try {
+                    await MessageModel.findOneAndUpdate(
+                        { _id: messageId },
+                        { $set: { isDeleted: true } }
+                    );
+                } catch (e) {
+                    console.error('Failed to update message deleted state:', e);
+                }
+            }
+        }
+    });
+
+    socket.on('editMessage', async ({ messageId, newText }) => {
+        const user = users.get(socket.id);
+        if (!user?.roomId) return;
+
+        const roomMessages = messages.get(user.roomId);
+        if (!roomMessages) return;
+
+        const msg = roomMessages.find(m => m.id === messageId);
+        if (msg && msg.username === user.username && !msg.isDeleted) { // Only allow editing own messages that aren't deleted
+            const originalText = msg.content;
+            msg.content = newText;
+            msg.editedAt = new Date().toISOString();
+            msg.originalText = originalText;
+
+            io.to(user.roomId).emit('messageEdited', {
+                messageId,
+                newText,
+                editedAt: msg.editedAt,
+                originalText
+            });
+
+            // Update in MongoDB if available
+            if (useMongo) {
+                try {
+                    await MessageModel.findOneAndUpdate(
+                        { _id: messageId },
+                        { 
+                            $set: { 
+                                text: newText,
+                                editedAt: new Date(),
+                                originalText
+                            } 
+                        }
+                    );
+                } catch (e) {
+                    console.error('Failed to update edited message:', e);
+                }
+            }
         }
     });
 

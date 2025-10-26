@@ -3,14 +3,20 @@ import { motion } from 'framer-motion';
 import { Pin, Trash2 } from 'lucide-react';
 import { Button } from './ui/button';
 
+import { useState } from 'react';
+import { Pencil } from 'lucide-react';
+
 export function ChatWindow({ 
   messages, 
   currentUsername, 
   typingUsers, 
   isModerator,
   onDeleteMessage,
-  onPinMessage
+  onPinMessage,
+  onEditMessage
 }) {
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editText, setEditText] = useState('');
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -154,9 +160,9 @@ export function ChatWindow({
     
     // Default text message
     return (
-      <p className="whitespace-pre-wrap break-words max-w-[65ch] overflow-wrap-anywhere hyphens-auto">
+      <div className="whitespace-pre-wrap break-words max-w-[65ch] overflow-wrap-anywhere hyphens-auto">
         {content}
-      </p>
+      </div>
     );
   };
 
@@ -214,30 +220,98 @@ export function ChatWindow({
                       }`}
                     >
                       {typeof message.content === 'string' && renderMessageContent(message.content)}
+                      {message.editedAt && (
+                        <span className="ml-2 text-xs text-gray-500 dark:text-gray-400 italic">
+                          (edited)
+                        </span>
+                      )}
                     </div>
 
                     {/* Message Actions */}
-                    {isModerator && (
-                      <div className={`absolute top-0 ${
-                        message.username === currentUsername ? 'left-0' : 'right-0'
-                      } opacity-0 group-hover:opacity-100 transition-opacity flex gap-1`}>
+                    <div className={`absolute top-0 ${
+                      message.username === currentUsername ? 'left-0' : 'right-0'
+                    } opacity-0 group-hover:opacity-100 transition-opacity flex gap-1`}>
+                      {/* Edit button - only shown for user's own messages that aren't deleted */}
+                      {message.username === currentUsername && !message.isDeleted && !editingMessageId && (
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => onPinMessage(message.id)}
-                          className="h-8 w-8 p-0 hover:bg-[#8FBC8F]/30"
+                          onClick={() => {
+                            setEditingMessageId(message.id);
+                            setEditText(message.content);
+                          }}
+                          className="h-8 w-8 p-0 hover:bg-blue-500/15"
                         >
-                          <Pin className={`w-4 h-4 ${
-                            message.isPinned ? 'text-[#2F4F4F]' : ''
-                          }`} />
+                          <Pencil className="w-4 h-4 text-blue-500" />
+                        </Button>
+                      )}
+
+                      {isModerator && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onPinMessage(message.id)}
+                            className="h-8 w-8 p-0 hover:bg-[#8FBC8F]/30"
+                          >
+                            <Pin className={`w-4 h-4 ${
+                              message.isPinned ? 'text-[#2F4F4F]' : ''
+                            }`} />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onDeleteMessage(message.id)}
+                            className="h-8 w-8 p-0 hover:bg-[#C94F4F]/15"
+                          >
+                            <Trash2 className="w-4 h-4 text-[#C94F4F]" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Edit Message Form */}
+                    {editingMessageId === message.id && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={editText}
+                          onChange={e => setEditText(e.target.value)}
+                          className="flex-1 min-w-0 rounded-md border border-gray-300 dark:border-gray-700 
+                                   bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none 
+                                   focus:ring-2 focus:ring-blue-500"
+                          placeholder="Edit your message..."
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              onEditMessage(message.id, editText);
+                              setEditingMessageId(null);
+                              setEditText('');
+                            } else if (e.key === 'Escape') {
+                              setEditingMessageId(null);
+                              setEditText('');
+                            }
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            onEditMessage(message.id, editText);
+                            setEditingMessageId(null);
+                            setEditText('');
+                          }}
+                        >
+                          Save
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => onDeleteMessage(message.id)}
-                          className="h-8 w-8 p-0 hover:bg-[#C94F4F]/15"
+                          onClick={() => {
+                            setEditingMessageId(null);
+                            setEditText('');
+                          }}
                         >
-                          <Trash2 className="w-4 h-4 text-[#C94F4F]" />
+                          Cancel
                         </Button>
                       </div>
                     )}

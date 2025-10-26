@@ -2,6 +2,7 @@ import React from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from './auth/AuthProvider'
 import { Button } from './ui/button'
+import UserProfile from './UserProfile'
 
 const NavLink = ({ to, children }) => {
   const location = useLocation()
@@ -37,30 +38,24 @@ const Navbar = () => {
           to="/"
           className="text-lg font-semibold uppercase tracking-[0.35em] text-white drop-shadow transition-colors hover:text-violet-200"
         >
-          Chatroom
+          CORE
         </Link>
 
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <NavLink to="/">Home</NavLink>
-            <NavLink to="/chat">Chat</NavLink>
+            {!isAuthenticated && <NavLink to="/signin">Chat</NavLink>}
             {isAuthenticated && <NavLink to="/chat">Chat</NavLink>}
             {isAuthenticated && user?.isModerator && (
               <NavLink to="/mod-settings">Mod Panel</NavLink>
             )}
+            {isAuthenticated && <UserProfile />}
           </div>
           
           <div className="ml-4 flex items-center gap-2">
             {isAuthenticated ? (
               <>
                 <div className="flex items-center gap-3">
-                  {user?.picture && (
-                    <img
-                      src={user.picture}
-                      alt={user.name}
-                      className="h-8 w-8 rounded-full"
-                    />
-                  )}
                   <div className="flex flex-col">
                     <span className="text-sm text-white/90">{user?.name}</span>
                     {user?.isModerator && (
@@ -70,7 +65,7 @@ const Navbar = () => {
                 </div>
                 <Button
                   variant="ghost"
-                  className="hover:bg-white/10"
+                  className="bg-gradient-to-r from-indigo-600 to-indigo-900 text-white hover:opacity-90 hover:bg-white/10"
                   onClick={handleLogout}
                 >
                   Logout

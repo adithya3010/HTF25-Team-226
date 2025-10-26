@@ -11,6 +11,9 @@ const roomSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  members: [{
+    type: String
+  }],
   createdAt: {
     type: Date,
     default: Date.now

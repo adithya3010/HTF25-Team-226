@@ -15,6 +15,19 @@ const messageSchema = new mongoose.Schema({
     isPinned: {
         type: Boolean,
         default: false
+    },
+    isDeleted: {
+        type: Boolean,
+        default: false
+    },
+    editedAt: {
+        type: Date,
+        default: null
+    },
+    originalText: String, // Store original text when edited
+    userColor: {
+        type: String,
+        default: '#4B5563'
     }
 });
 
