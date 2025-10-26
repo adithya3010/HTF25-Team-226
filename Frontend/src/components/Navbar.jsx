@@ -46,9 +46,6 @@ const Navbar = () => {
             <NavLink to="/">Home</NavLink>
             {!isAuthenticated && <NavLink to="/signin">Chat</NavLink>}
             {isAuthenticated && <NavLink to="/chat">Chat</NavLink>}
-            {isAuthenticated && user?.isModerator && (
-              <NavLink to="/mod-settings">Mod Panel</NavLink>
-            )}
             {isAuthenticated && <UserProfile />}
           </div>
           

@@ -19,6 +19,15 @@ const pdfSchema = new mongoose.Schema({
     author: String,
     subject: String,
     keywords: [String]
+  },
+  summary: {
+    text: String,
+    generatedAt: Date,
+    status: {
+      type: String,
+      enum: ['pending', 'completed', 'failed'],
+      default: 'pending'
+    }
   }
 });
 

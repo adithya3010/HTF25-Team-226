@@ -35,6 +35,8 @@ export default function ChatApp() {
     pinMessage,
     muteUser,
     unmuteUser,
+    blockUser,
+    unblockUser,
     editMessage,
   } = useSocket(username, currentRoom?._id);
 
@@ -77,18 +79,19 @@ export default function ChatApp() {
         console.error("Failed to load rooms:", error);
       });
 
-    const socket = io("http://localhost:3001");
-    socket.on("roomCreated", (newRoom) => {
-      setRooms((prev) => {
-        if (prev.some((r) => r._id === newRoom._id)) return prev;
-        return [...prev, newRoom];
+    if (socket) {
+      socket.on("roomCreated", (newRoom) => {
+        setRooms((prev) => {
+          if (prev.some((r) => r._id === newRoom._id)) return prev;
+          return [...prev, newRoom];
+        });
       });
-    });
 
-    return () => {
-      socket.disconnect();
-    };
-  }, [username]);
+      return () => {
+        socket.off("roomCreated");
+      };
+    }
+  }, [username, socket]);
 
   const handleCreateRoom = async (name) => {
     try {
@@ -216,6 +219,8 @@ export default function ChatApp() {
                   isModerator={isModerator}
                   onMuteUser={muteUser}
                   onUnmuteUser={unmuteUser}
+                  onBlockUser={blockUser}
+                  onUnblockUser={unblockUser}
                   onClose={() => setIsSidebarOpen(false)}
                   isMobile={true}
                   socket={socket}
@@ -237,6 +242,8 @@ export default function ChatApp() {
               onDeleteMessage={deleteMessage}
               onPinMessage={pinMessage}
               onEditMessage={editMessage}
+              socket={socket}
+              roomId={currentRoom._id}
             />
             <MessageInput
               onSendMessage={sendMessage}
@@ -254,6 +261,8 @@ export default function ChatApp() {
                 isModerator={isModerator}
                 onMuteUser={muteUser}
                 onUnmuteUser={unmuteUser}
+                onBlockUser={blockUser}
+                onUnblockUser={unblockUser}
                 socket={socket}
               />
             </div>

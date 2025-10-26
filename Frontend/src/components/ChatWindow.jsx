@@ -13,7 +13,9 @@ export function ChatWindow({
   isModerator,
   onDeleteMessage,
   onPinMessage,
-  onEditMessage
+  onEditMessage,
+  socket,
+  roomId
 }) {
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editText, setEditText] = useState('');
@@ -42,6 +44,8 @@ export function ChatWindow({
     try {
       const parsedContent = JSON.parse(content);
       if (parsedContent.type === 'pdf') {
+        // Extract the ID from the URL
+        const pdfId = parsedContent.url.split('/').pop();
         return (
           <div className="flex flex-col gap-2">
             <a 
@@ -64,9 +68,60 @@ export function ChatWindow({
                   {(parsedContent.size / (1024 * 1024)).toFixed(1)} MB
                 </div>
               </div>
-              <svg className="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
+              <div className="flex gap-2">
+                <div className="relative">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const pdfId = parsedContent.url.split('/').pop();
+                      if (!pdfId) {
+                        toast.error('Could not find PDF ID', {
+                          style: { 
+                            background: '#000000',
+                            color: '#ffffff'
+                          }
+                        });
+                        return;
+                      }
+                      socket.emit('summarizePdf', {
+                        pdfId: pdfId,
+                        roomId: roomId
+                      });
+                      toast.loading('Generating summary...', {
+                        style: { 
+                          background: '#000000',
+                          color: '#ffffff'
+                        },
+                        description: 'This might take a few moments.'
+                      });
+                    }}
+                    className="h-8 px-2 py-1 hover:bg-emerald-500/15 group text-sm flex items-center gap-1"
+                  >
+                    <svg className="w-4 h-4 text-emerald-600 group-hover:text-emerald-700 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span className="text-emerald-700 group-hover:text-emerald-800 transition-colors">
+                      Summarize
+                    </span>
+                  </Button>
+                </div>
+                <a 
+                  href={parsedContent.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="h-8 px-2 py-1 hover:bg-blue-500/15 group text-sm flex items-center gap-1 rounded-md"
+                >
+                  <svg className="w-4 h-4 text-blue-500 group-hover:text-blue-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                  <span className="text-blue-600 group-hover:text-blue-700 transition-colors">
+                    Open PDF
+                  </span>
+                </a>
+              </div>
             </a>
           </div>
         );
@@ -213,17 +268,26 @@ export function ChatWindow({
                     <div
                       className={`rounded-lg px-4 py-2 max-w-[85%] break-words ${
                         message.isPinned
-                          ? 'bg-[#8FBC8F] text-[#1A1A1A]'
+                          ? 'bg-[#8FBC8F] text-[#1A1A1A] ring-2 ring-[#2F4F4F]'
                           : message.username === currentUsername
                           ? 'bg-[#4E6E5D] text-[#F9F9F9]'
                           : 'bg-[#F3F2ED] text-[#1A1A1A]'
                       }`}
                     >
+                      {message.isPinned && (
+                        <div className="flex items-center gap-1 mb-1 text-[#2F4F4F] font-medium">
+                          <Pin className="w-3 h-3 fill-current" />
+                          <span className="text-xs">Pinned Message</span>
+                        </div>
+                      )}
                       {typeof message.content === 'string' && renderMessageContent(message.content)}
                       {message.editedAt && (
-                        <span className="ml-2 text-xs text-gray-500 dark:text-gray-400 italic">
-                          (edited)
-                        </span>
+                        <div className="mt-1 flex items-center gap-1">
+                          <Pencil className="w-3 h-3 text-gray-400" />
+                          <span className="text-[10px] text-gray-600 dark:text-gray-400">
+                            edited {new Date(message.editedAt).toLocaleTimeString()}
+                          </span>
+                        </div>
                       )}
                     </div>
 
@@ -277,9 +341,9 @@ export function ChatWindow({
                           type="text"
                           value={editText}
                           onChange={e => setEditText(e.target.value)}
-                          className="flex-1 min-w-0 rounded-md border border-gray-300 dark:border-gray-700 
-                                   bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none 
-                                   focus:ring-2 focus:ring-blue-500"
+                          className="flex-1 min-w-0 rounded-md border border-gray-200 
+                                   bg-white text-black px-3 py-2 text-sm focus:outline-none 
+                                   focus:ring-2 focus:ring-blue-500 shadow-sm"
                           placeholder="Edit your message..."
                           onKeyDown={e => {
                             if (e.key === 'Enter' && !e.shiftKey) {
@@ -293,8 +357,9 @@ export function ChatWindow({
                             }
                           }}
                         />
-                        <Button
+                          <Button
                           size="sm"
+                          className="bg-blue-500 hover:bg-blue-600 text-white px-4"
                           onClick={() => {
                             onEditMessage(message.id, editText);
                             setEditingMessageId(null);
@@ -306,6 +371,7 @@ export function ChatWindow({
                         <Button
                           variant="ghost"
                           size="sm"
+                          className="hover:bg-gray-100"
                           onClick={() => {
                             setEditingMessageId(null);
                             setEditText('');

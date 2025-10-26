@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { Button } from './ui/button';
-import { User, Crown, Volume2, VolumeX, MessageSquare } from 'lucide-react';
+import { User, Crown, Volume2, VolumeX, Ban, UserX, MessageSquare } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { PrivateChat } from './PrivateChat';
 
@@ -10,6 +10,8 @@ export function UserSidebar({
   isModerator,
   onMuteUser,
   onUnmuteUser,
+  onBlockUser,
+  onUnblockUser,
   onClose,
   isMobile,
   socket
@@ -123,7 +125,7 @@ export function UserSidebar({
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               {user.username !== currentUsername && (
                 <Button
                   variant="ghost"
@@ -137,18 +139,34 @@ export function UserSidebar({
               )}
               
               {isModerator && user.username !== currentUsername && !user.isModerator && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => user.isMuted ? onUnmuteUser(user.username) : onMuteUser(user.username)}
-                  className="h-8 w-8 p-0"
-                >
-                  {user.isMuted ? (
-                    <VolumeX className="w-4 h-4 text-red-500" />
-                  ) : (
-                    <Volume2 className="w-4 h-4" />
-                  )}
-                </Button>
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => user.isMuted ? onUnmuteUser(user.username) : onMuteUser(user.username)}
+                    className="h-8 w-8 p-0 hover:bg-amber-500/15"
+                    title={user.isMuted ? 'Unmute user' : 'Mute user'}
+                  >
+                    {user.isMuted ? (
+                      <VolumeX className="w-4 h-4 text-amber-500" />
+                    ) : (
+                      <Volume2 className="w-4 h-4" />
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => user.isBlocked ? onUnblockUser(user.username) : onBlockUser(user.username)}
+                    className="h-8 w-8 p-0 hover:bg-red-500/15"
+                    title={user.isBlocked ? 'Unblock user' : 'Block user'}
+                  >
+                    {user.isBlocked ? (
+                      <UserX className="w-4 h-4 text-red-500" />
+                    ) : (
+                      <Ban className="w-4 h-4 text-gray-500" />
+                    )}
+                  </Button>
+                </>
               )}
             </div>
           </motion.div>
@@ -205,7 +223,7 @@ export function UserSidebar({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                   {user.username !== currentUsername && (
                     <Button
                       variant="ghost"
@@ -219,18 +237,34 @@ export function UserSidebar({
                   )}
                   
                   {isModerator && user.username !== currentUsername && !user.isModerator && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => user.isMuted ? onUnmuteUser(user.username) : onMuteUser(user.username)}
-                      className="h-8 w-8 p-0"
-                    >
-                      {user.isMuted ? (
-                        <VolumeX className="w-4 h-4 text-red-500" />
-                      ) : (
-                        <Volume2 className="w-4 h-4" />
-                      )}
-                    </Button>
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => user.isMuted ? onUnmuteUser(user.username) : onMuteUser(user.username)}
+                        className="h-8 w-8 p-0 hover:bg-amber-500/15"
+                        title={user.isMuted ? 'Unmute user' : 'Mute user'}
+                      >
+                        {user.isMuted ? (
+                          <VolumeX className="w-4 h-4 text-amber-500" />
+                        ) : (
+                          <Volume2 className="w-4 h-4" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => user.isBlocked ? onUnblockUser(user.username) : onBlockUser(user.username)}
+                        className="h-8 w-8 p-0 hover:bg-red-500/15"
+                        title={user.isBlocked ? 'Unblock user' : 'Block user'}
+                      >
+                        {user.isBlocked ? (
+                          <UserX className="w-4 h-4 text-red-500" />
+                        ) : (
+                          <Ban className="w-4 h-4 text-gray-500" />
+                        )}
+                      </Button>
+                    </>
                   )}
                 </div>
               </motion.div>
