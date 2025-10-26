@@ -1,6 +1,10 @@
 const mongoose = require('mongoose');
 
 const messageSchema = new mongoose.Schema({
+    _id: {
+        type: String,
+        required: true
+    },
     username: String,
     text: String,
     roomId: {

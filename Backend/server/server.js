@@ -58,16 +58,40 @@ const rooms = new Map(); // roomId -> { name, createdBy }
 
 // Optional MongoDB persistence if configured
 const useMongo = !!process.env.MONGODB_URI;
-if (useMongo) {
-    mongoose.connect(process.env.MONGODB_URI)
-        .then(() => console.log('✅ MongoDB connected'))
-        .catch((err) => console.error('❌ MongoDB error:', err));
-}
+let isMongoConnected = false;
 
 if (useMongo) {
-    mongoose.connection.on('connected', () => console.log('MongoDB connection state: connected'));
-    mongoose.connection.on('error', (err) => console.error('MongoDB connection error:', err));
-    mongoose.connection.on('disconnected', () => console.warn('MongoDB disconnected'));
+    mongoose.set('bufferCommands', false); // Disable buffering
+    mongoose.connection.on('connected', () => {
+        console.log('✅ MongoDB connected');
+        console.log('💡 TIP: If you cannot connect, make sure to whitelist your IP address in MongoDB Atlas:');
+        console.log('1. Go to https://cloud.mongodb.com');
+        console.log('2. Click on Network Access');
+        console.log('3. Click Add IP Address');
+        console.log('4. Add your current IP or select Allow Access from Anywhere');
+        isMongoConnected = true;
+    });
+    mongoose.connection.on('error', (err) => {
+        console.error('❌ MongoDB connection error:', err);
+        isMongoConnected = false;
+    });
+    mongoose.connection.on('disconnected', () => {
+        console.warn('⚠️ MongoDB disconnected');
+        isMongoConnected = false;
+    });
+
+    // Connect to MongoDB
+    mongoose.connect(process.env.MONGODB_URI, {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+        serverSelectionTimeoutMS: 30000, // Increased timeout to 30 seconds
+        heartbeatFrequencyMS: 2000,      // Check server status more frequently
+        socketTimeoutMS: 45000,          // Close sockets after 45 seconds of inactivity
+        family: 4,                       // Use IPv4, skip IPv6
+    }).catch((err) => {
+        console.error('❌ MongoDB initial connection error:', err);
+        console.log('💡 Note: The chat will work in memory-only mode until MongoDB connection is established');
+    });
 } else {
     console.log('MongoDB not configured (MONGODB_URI missing) — running with in-memory message store');
 }
@@ -182,7 +206,7 @@ io.on('connection', async (socket) => {
 
     // Send existing messages for the room (load from DB if available)
     if (roomId) {
-        if (useMongo) {
+        if (useMongo && isMongoConnected) {
             try {
                 // Validate roomId is a valid ObjectId
                 if (!mongoose.Types.ObjectId.isValid(roomId)) {
@@ -191,22 +215,21 @@ io.on('connection', async (socket) => {
                     return;
                 }
 
-                const docs = await MessageModel.find({ roomId: new mongoose.Types.ObjectId(roomId) })
+                const dbMessages = await MessageModel.find({ roomId: new mongoose.Types.ObjectId(roomId) })
                     .sort({ timestamp: 1 })
-                    .limit(200);
-                const mapped = docs.map((d) => ({
-                    id: d._id.toString(),
-                    username: d.username,
-                    content: d.text,
-                    timestamp: d.timestamp,
-                    userColor: ['#4B5563', '#2F4F4F', '#6B7280', '#3B82F6'][Math.floor(Math.random()*4)],
-                    isPinned: d.isPinned || false,
-                    isDeleted: d.isDeleted || false,
-                    editedAt: d.editedAt || null,
-                    originalText: d.originalText || null,
-                    timestamp: d.timestamp,
-                    userColor: color,
-                    isPinned: !!d.isPinned,
+                    .limit(200)
+                    .lean();
+
+                const mapped = dbMessages.map(msg => ({
+                    id: msg._id.toString(),
+                    username: msg.username,
+                    content: msg.text,
+                    timestamp: msg.timestamp,
+                    userColor: msg.userColor || '#4B5563',
+                    isPinned: msg.isPinned || false,
+                    isDeleted: msg.isDeleted || false,
+                    editedAt: msg.editedAt || null,
+                    originalText: msg.originalText || null
                 }));
                 socket.emit('message history', mapped);
                 // also populate in-memory if not exists
@@ -251,14 +274,15 @@ io.on('connection', async (socket) => {
         roomMessages.push(msg);
         messages.set(user.roomId, roomMessages);
 
-        // Persist to Mongo if available
-        if (useMongo) {
+        // Persist to Mongo if available and connected
+        if (useMongo && isMongoConnected) {
             try {
                 // Validate roomId before creating message
                 if (!mongoose.Types.ObjectId.isValid(msg.roomId)) {
                     throw new Error('Invalid roomId');
                 }
                 await MessageModel.create({
+                    _id: msg.id,
                     username: msg.username,
                     text: msg.content,
                     timestamp: msg.timestamp,
