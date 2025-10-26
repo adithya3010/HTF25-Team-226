@@ -231,6 +231,42 @@ export function useSocket(username, roomId) {
       setTypingUsers((prev) => prev.filter((u) => u !== typingUsername));
     });
 
+    // Private message events - show notification when receiving private message
+    newSocket.on('privateMessage', (message) => {
+      // Only show notification if message is from someone else
+      if (message.from !== username) {
+        toast.message(`💬 ${message.from}`, {
+          description: message.content,
+          duration: 5000,
+          style: { 
+            background: '#1e1b4b',
+            color: '#ffffff',
+            border: '1px solid #6366f1'
+          },
+          action: {
+            label: 'Reply',
+            onClick: () => {
+              // Emit custom event to open chat
+              window.dispatchEvent(new CustomEvent('openPrivateChat', { 
+                detail: { username: message.from }
+              }));
+            }
+          }
+        });
+
+        // Play notification sound (optional)
+        try {
+          const audio = new Audio('/notification.mp3');
+          audio.volume = 0.3;
+          audio.play().catch(() => {
+            // Ignore if audio play fails
+          });
+        } catch (e) {
+          // Ignore audio errors
+        }
+      }
+    });
+
     return () => {
       newSocket.disconnect();
       setMessages([]);

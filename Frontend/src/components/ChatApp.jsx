@@ -27,6 +27,7 @@ export default function ChatApp() {
     users,
     typingUsers,
     isConnected,
+    socket,
     sendMessage,
     emitTyping,
     emitStopTyping,
@@ -62,8 +63,6 @@ export default function ChatApp() {
     }
   }, [isDarkMode]);
 
-  const [socket, setSocket] = useState(null);
-
   useEffect(() => {
     if (!username) return;
 
@@ -80,20 +79,19 @@ export default function ChatApp() {
         console.error("Failed to load rooms:", error);
       });
 
-    const newSocket = io("http://localhost:3001");
-    setSocket(newSocket);
-    
-    newSocket.on("roomCreated", (newRoom) => {
-      setRooms((prev) => {
-        if (prev.some((r) => r._id === newRoom._id)) return prev;
-        return [...prev, newRoom];
+    if (socket) {
+      socket.on("roomCreated", (newRoom) => {
+        setRooms((prev) => {
+          if (prev.some((r) => r._id === newRoom._id)) return prev;
+          return [...prev, newRoom];
+        });
       });
-    });
 
-    return () => {
-      socket.disconnect();
-    };
-  }, [username]);
+      return () => {
+        socket.off("roomCreated");
+      };
+    }
+  }, [username, socket]);
 
   const handleCreateRoom = async (name) => {
     try {
@@ -225,6 +223,7 @@ export default function ChatApp() {
                   onUnblockUser={unblockUser}
                   onClose={() => setIsSidebarOpen(false)}
                   isMobile={true}
+                  socket={socket}
                 />
               </SheetContent>
             </Sheet>
@@ -264,6 +263,7 @@ export default function ChatApp() {
                 onUnmuteUser={unmuteUser}
                 onBlockUser={blockUser}
                 onUnblockUser={unblockUser}
+                socket={socket}
               />
             </div>
           )}

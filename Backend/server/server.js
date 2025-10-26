@@ -287,28 +287,23 @@ io.on('connection', async (socket) => {
                     return;
                 }
 
-                // Wait for messages to be retrieved
-                const docs = await MessageModel.find({ 
-                    roomId: new mongoose.Types.ObjectId(roomId) 
-                })
-                .sort({ timestamp: 1 })
-                .limit(200)
-                .exec();
-
+                const docs = await MessageModel.find({ roomId: new mongoose.Types.ObjectId(roomId) })
+                    .sort({ timestamp: 1 })
+                    .limit(200);
                 const mapped = docs.map((d) => ({
                     id: d._id.toString(),
                     username: d.username,
                     content: d.text,
                     timestamp: d.timestamp,
+                    userColor: ['#4B5563', '#2F4F4F', '#6B7280', '#3B82F6'][Math.floor(Math.random()*4)],
+                    isPinned: d.isPinned || false,
+                    isDeleted: d.isDeleted || false,
+                    editedAt: d.editedAt || null,
+                    originalText: d.originalText || null,
+                    timestamp: d.timestamp,
                     userColor: color,
                     isPinned: !!d.isPinned,
-                    isDeleted: !!d.isDeleted,
-                    editedAt: d.editedAt || null,
-                    originalText: d.originalText || null
                 }));
-
-                // Update in-memory cache
-                messages.set(roomId, mapped);
                 socket.emit('message history', mapped);
             } catch (e) {
                 console.error('Failed to load messages from DB:', e);
@@ -364,8 +359,7 @@ io.on('connection', async (socket) => {
                 if (!mongoose.Types.ObjectId.isValid(msg.roomId)) {
                     throw new Error('Invalid roomId');
                 }
-                const savedMessage = await MessageModel.create({
-                    _id: new mongoose.Types.ObjectId(),
+                await MessageModel.create({
                     username: msg.username,
                     text: msg.content,
                     timestamp: msg.timestamp,
@@ -374,8 +368,6 @@ io.on('connection', async (socket) => {
                     isDeleted: false,
                     userColor: msg.userColor || '#4B5563'
                 });
-                // Update the message ID to use MongoDB's _id
-                msg.id = savedMessage._id.toString();
             } catch (e) {
                 console.error('Failed to persist message', e);
             }
@@ -439,8 +431,8 @@ io.on('connection', async (socket) => {
             // Update in MongoDB if available
             if (useMongo && isMongoConnected) {
                 try {
-                    await MessageModel.findByIdAndUpdate(
-                        messageId,
+                    await MessageModel.findOneAndUpdate(
+                        { _id: messageId },
                         { 
                             $set: { 
                                 text: newText,

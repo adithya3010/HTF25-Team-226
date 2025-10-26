@@ -1,6 +1,8 @@
 import { motion } from 'framer-motion';
 import { Button } from './ui/button';
-import { User, Crown, Volume2, VolumeX, Ban, UserX } from 'lucide-react';
+import { User, Crown, Volume2, VolumeX, Ban, UserX, MessageSquare } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { PrivateChat } from './PrivateChat';
 
 export function UserSidebar({
   users,
@@ -11,8 +13,22 @@ export function UserSidebar({
   onBlockUser,
   onUnblockUser,
   onClose,
-  isMobile
+  isMobile,
+  socket
 }) {
+  const [selectedChat, setSelectedChat] = useState(null);
+
+  // Listen for custom event to open private chat
+  useEffect(() => {
+    const handleOpenChat = (event) => {
+      setSelectedChat(event.detail.username);
+    };
+
+    window.addEventListener('openPrivateChat', handleOpenChat);
+    return () => {
+      window.removeEventListener('openPrivateChat', handleOpenChat);
+    };
+  }, []);
   // Group users by status
   const onlineUsers = users.filter(user => user.isOnline);
   const offlineUsers = users.filter(user => !user.isOnline);
@@ -109,36 +125,50 @@ export function UserSidebar({
               </div>
             </div>
 
-            {isModerator && user.username !== currentUsername && !user.isModerator && (
-              <div className="flex gap-1">
+            <div className="flex items-center gap-1">
+              {user.username !== currentUsername && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => user.isMuted ? onUnmuteUser(user.username) : onMuteUser(user.username)}
-                  className="h-8 w-8 p-0 hover:bg-amber-500/15"
-                  title={user.isMuted ? 'Unmute user' : 'Mute user'}
+                  onClick={() => setSelectedChat(user.username)}
+                  className="h-8 w-8 p-0 hover:bg-indigo-500/20"
+                  title="Send private message"
                 >
-                  {user.isMuted ? (
-                    <VolumeX className="w-4 h-4 text-amber-500" />
-                  ) : (
-                    <Volume2 className="w-4 h-4" />
-                  )}
+                  <MessageSquare className="w-4 h-4 text-indigo-400" />
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => user.isBlocked ? onUnblockUser(user.username) : onBlockUser(user.username)}
-                  className="h-8 w-8 p-0 hover:bg-red-500/15"
-                  title={user.isBlocked ? 'Unblock user' : 'Block user'}
-                >
-                  {user.isBlocked ? (
-                    <UserX className="w-4 h-4 text-red-500" />
-                  ) : (
-                    <Ban className="w-4 h-4 text-gray-500" />
-                  )}
-                </Button>
-              </div>
-            )}
+              )}
+              
+              {isModerator && user.username !== currentUsername && !user.isModerator && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => user.isMuted ? onUnmuteUser(user.username) : onMuteUser(user.username)}
+                    className="h-8 w-8 p-0 hover:bg-amber-500/15"
+                    title={user.isMuted ? 'Unmute user' : 'Mute user'}
+                  >
+                    {user.isMuted ? (
+                      <VolumeX className="w-4 h-4 text-amber-500" />
+                    ) : (
+                      <Volume2 className="w-4 h-4" />
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => user.isBlocked ? onUnblockUser(user.username) : onBlockUser(user.username)}
+                    className="h-8 w-8 p-0 hover:bg-red-500/15"
+                    title={user.isBlocked ? 'Unblock user' : 'Block user'}
+                  >
+                    {user.isBlocked ? (
+                      <UserX className="w-4 h-4 text-red-500" />
+                    ) : (
+                      <Ban className="w-4 h-4 text-gray-500" />
+                    )}
+                  </Button>
+                </>
+              )}
+            </div>
           </motion.div>
         ))}
 
@@ -193,41 +223,65 @@ export function UserSidebar({
                   </div>
                 </div>
 
-                {isModerator && user.username !== currentUsername && !user.isModerator && (
-                  <div className="flex gap-1">
+                <div className="flex items-center gap-1">
+                  {user.username !== currentUsername && (
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => user.isMuted ? onUnmuteUser(user.username) : onMuteUser(user.username)}
-                      className="h-8 w-8 p-0 hover:bg-amber-500/15"
-                      title={user.isMuted ? 'Unmute user' : 'Mute user'}
+                      onClick={() => setSelectedChat(user.username)}
+                      className="h-8 w-8 p-0 hover:bg-indigo-500/20"
+                      title="Send private message"
                     >
-                      {user.isMuted ? (
-                        <VolumeX className="w-4 h-4 text-amber-500" />
-                      ) : (
-                        <Volume2 className="w-4 h-4" />
-                      )}
+                      <MessageSquare className="w-4 h-4 text-indigo-400" />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => user.isBlocked ? onUnblockUser(user.username) : onBlockUser(user.username)}
-                      className="h-8 w-8 p-0 hover:bg-red-500/15"
-                      title={user.isBlocked ? 'Unblock user' : 'Block user'}
-                    >
-                      {user.isBlocked ? (
-                        <UserX className="w-4 h-4 text-red-500" />
-                      ) : (
-                        <Ban className="w-4 h-4 text-gray-500" />
-                      )}
-                    </Button>
-                  </div>
-                )}
+                  )}
+                  
+                  {isModerator && user.username !== currentUsername && !user.isModerator && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => user.isMuted ? onUnmuteUser(user.username) : onMuteUser(user.username)}
+                        className="h-8 w-8 p-0 hover:bg-amber-500/15"
+                        title={user.isMuted ? 'Unmute user' : 'Mute user'}
+                      >
+                        {user.isMuted ? (
+                          <VolumeX className="w-4 h-4 text-amber-500" />
+                        ) : (
+                          <Volume2 className="w-4 h-4" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => user.isBlocked ? onUnblockUser(user.username) : onBlockUser(user.username)}
+                        className="h-8 w-8 p-0 hover:bg-red-500/15"
+                        title={user.isBlocked ? 'Unblock user' : 'Block user'}
+                      >
+                        {user.isBlocked ? (
+                          <UserX className="w-4 h-4 text-red-500" />
+                        ) : (
+                          <Ban className="w-4 h-4 text-gray-500" />
+                        )}
+                      </Button>
+                    </>
+                  )}
+                </div>
               </motion.div>
             ))}
           </>
         )}
       </div>
+
+      {/* Private Chat Window */}
+      {selectedChat && (
+        <PrivateChat
+          socket={socket}
+          currentUsername={currentUsername}
+          recipient={selectedChat}
+          onClose={() => setSelectedChat(null)}
+        />
+      )}
     </div>
   );
 }
